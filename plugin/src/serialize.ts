@@ -28,6 +28,98 @@ function has<K extends string>(node: object, key: K): node is object & Record<K,
   return key in node;
 }
 
+/** Two hex digits from a Figma channel, which runs 0..1 rather than 0..255. */
+function channel(value: number): string {
+  return Math.round(Math.max(0, Math.min(1, value)) * 255)
+    .toString(16)
+    .padStart(2, "0");
+}
+
+/**
+ * Figma colours as CSS hex.
+ *
+ * The raw form is three or four floats — `0.08235294371843338` for one
+ * channel — which is both unreadable and a large share of the payload on a
+ * document with many fills. Hex is what a consumer writing CSS actually wants,
+ * and it is lossless at 8-bit, which is the precision Figma renders at anyway.
+ */
+export function toHex(color: RGB | RGBA): string {
+  const hex = `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
+  const alpha = (color as RGBA).a;
+  return alpha === undefined || alpha >= 1 ? hex : `${hex}${channel(alpha)}`;
+}
+
+/** Strip keys whose value is the Figma default and therefore carries nothing. */
+function compact<T extends Record<string, unknown>>(object: T): T {
+  for (const key of Object.keys(object)) {
+    const value = object[key];
+    if (
+      value === undefined ||
+      (key === "visible" && value === true) ||
+      (key === "blendMode" && value === "NORMAL") ||
+      (key === "opacity" && value === 1) ||
+      (value !== null && typeof value === "object" && Object.keys(value).length === 0)
+    ) {
+      delete object[key];
+    }
+  }
+  return object;
+}
+
+function serializePaint(paint: Paint): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    type: paint.type,
+    visible: paint.visible,
+    opacity: paint.opacity,
+    blendMode: paint.blendMode,
+  };
+
+  if (paint.type === "SOLID") {
+    base.color = toHex(paint.color);
+  } else if (paint.type === "IMAGE") {
+    base.scaleMode = paint.scaleMode;
+    base.imageHash = paint.imageHash;
+  } else if (paint.type === "VIDEO") {
+    base.scaleMode = paint.scaleMode;
+  } else if (
+    paint.type === "GRADIENT_LINEAR" ||
+    paint.type === "GRADIENT_RADIAL" ||
+    paint.type === "GRADIENT_ANGULAR" ||
+    paint.type === "GRADIENT_DIAMOND"
+  ) {
+    base.gradientStops = paint.gradientStops.map((stop) => ({
+      position: Math.round(stop.position * 1000) / 1000,
+      color: toHex(stop.color),
+    }));
+    base.gradientTransform = paint.gradientTransform;
+  }
+  // PATTERN and SHADER paints carry no colour of their own to convert; the
+  // type alone is what a consumer can act on.
+
+  return compact(base);
+}
+
+export function serializePaints(paints: readonly Paint[]): Record<string, unknown>[] {
+  return paints.map(serializePaint);
+}
+
+export function serializeEffects(effects: readonly Effect[]): Record<string, unknown>[] {
+  return effects.map((effect) => {
+    const base: Record<string, unknown> = {
+      type: effect.type,
+      visible: effect.visible,
+      radius: (effect as BlurEffect).radius,
+    };
+    if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+      base.color = toHex(effect.color);
+      base.offset = { x: round(effect.offset.x), y: round(effect.offset.y) };
+      base.spread = effect.spread || undefined;
+      base.blendMode = effect.blendMode;
+    }
+    return compact(base);
+  });
+}
+
 export interface SerializeOptions {
   /** Levels of children to include. 0 means this node only. */
   depth?: number;
@@ -64,13 +156,16 @@ export function serializeNode(
   // Paint
   if (has(node, "fills")) {
     const fills = plain(node.fills as Paint[] | typeof figma.mixed);
-    if (fills !== undefined && (fills === MIXED || (fills as Paint[]).length > 0)) out.fills = fills;
+    if (fills === MIXED) out.fills = MIXED;
+    else if (fills !== undefined && fills.length > 0) out.fills = serializePaints(fills);
   }
   if (has(node, "strokes") && (node.strokes as Paint[]).length > 0) {
-    out.strokes = node.strokes;
+    out.strokes = serializePaints(node.strokes as Paint[]);
     if (has(node, "strokeWeight")) out.strokeWeight = plain(node.strokeWeight as number);
   }
-  if (has(node, "effects") && (node.effects as Effect[]).length > 0) out.effects = node.effects;
+  if (has(node, "effects") && (node.effects as Effect[]).length > 0) {
+    out.effects = serializeEffects(node.effects as Effect[]);
+  }
 
   if (has(node, "cornerRadius")) {
     const radius = plain(node.cornerRadius as number | typeof figma.mixed);
@@ -148,7 +243,7 @@ export async function serializeStyles(): Promise<Record<string, unknown>> {
   });
 
   return {
-    paint: paint.map((s) => ({ ...common(s), paints: s.paints })),
+    paint: paint.map((s) => ({ ...common(s), paints: serializePaints(s.paints) })),
     text: text.map((s) => ({
       ...common(s),
       fontName: s.fontName,
@@ -156,7 +251,7 @@ export async function serializeStyles(): Promise<Record<string, unknown>> {
       lineHeight: s.lineHeight,
       letterSpacing: s.letterSpacing,
     })),
-    effect: effect.map((s) => ({ ...common(s), effects: s.effects })),
+    effect: effect.map((s) => ({ ...common(s), effects: serializeEffects(s.effects) })),
     grid: grid.map((s) => ({ ...common(s), layoutGrids: s.layoutGrids })),
   };
 }
