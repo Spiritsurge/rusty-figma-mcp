@@ -11,7 +11,10 @@ use tokio_tungstenite::tungstenite;
 
 fn config(label: &str) -> Config {
     let dir = std::env::temp_dir().join(format!("hostlink-e2e-{}-{label}", std::process::id()));
-    Config { session_dir: Some(dir), ..Config::loopback(Identity::new("figma", label)) }
+    Config {
+        session_dir: Some(dir),
+        ..Config::loopback(Identity::new("figma", label))
+    }
 }
 
 async fn connect(
@@ -37,7 +40,8 @@ async fn request_and_response_round_trip_over_a_real_socket() {
 
     let link = server.link.clone();
     let caller = tokio::spawn(async move {
-        link.request("figma/getSelection", None, Duration::from_secs(5)).await
+        link.request("figma/getSelection", None, Duration::from_secs(5))
+            .await
     });
 
     let raw = host.next().await.expect("frame").expect("ok");
@@ -100,7 +104,8 @@ async fn dropping_the_host_fails_requests_in_flight() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let link = server.link.clone();
-    let caller = tokio::spawn(async move { link.request("x", None, Duration::from_secs(30)).await });
+    let caller =
+        tokio::spawn(async move { link.request("x", None, Duration::from_secs(30)).await });
     let _ = host.next().await;
 
     host.close(None).await.ok();
@@ -114,7 +119,10 @@ async fn dropping_the_host_fails_requests_in_flight() {
 async fn an_unsupported_protocol_version_is_refused() {
     let server = Server::start(config("version")).await.expect("start");
     assert!(connect(server.port, "v=99").await.is_err());
-    assert!(connect(server.port, "").await.is_err(), "missing ?v= must also be refused");
+    assert!(
+        connect(server.port, "").await.is_err(),
+        "missing ?v= must also be refused"
+    );
 }
 
 #[tokio::test]
@@ -127,9 +135,19 @@ async fn a_token_is_enforced_when_one_is_configured() {
     };
     let server = Server::start(cfg).await.expect("start");
 
-    assert!(connect(server.port, "v=1").await.is_err(), "no token must be refused");
-    assert!(connect(server.port, "v=1&token=wrong").await.is_err(), "bad token must be refused");
-    assert!(connect(server.port, &format!("v=1&token={token}")).await.is_ok());
+    assert!(
+        connect(server.port, "v=1").await.is_err(),
+        "no token must be refused"
+    );
+    assert!(
+        connect(server.port, "v=1&token=wrong").await.is_err(),
+        "bad token must be refused"
+    );
+    assert!(
+        connect(server.port, &format!("v=1&token={token}"))
+            .await
+            .is_ok()
+    );
 }
 
 /// §5: the newest connection wins, and the displaced one's work fails cleanly.
@@ -140,7 +158,8 @@ async fn a_second_connection_replaces_the_first() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let link = server.link.clone();
-    let caller = tokio::spawn(async move { link.request("x", None, Duration::from_secs(30)).await });
+    let caller =
+        tokio::spawn(async move { link.request("x", None, Duration::from_secs(30)).await });
     let _ = first.next().await;
 
     let _second = connect(server.port, "v=1").await.expect("second");
@@ -148,5 +167,8 @@ async fn a_second_connection_replaces_the_first() {
 
     let err = caller.await.unwrap().unwrap_err();
     assert_eq!(err.code, hostlink::codes::DISCONNECTED);
-    assert!(server.link.is_connected().await, "the replacement stays connected");
+    assert!(
+        server.link.is_connected().await,
+        "the replacement stays connected"
+    );
 }

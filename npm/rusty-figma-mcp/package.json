@@ -1,0 +1,44 @@
+{
+  "name": "rusty-figma-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that reads and edits the open Figma document through a plugin. One static binary, no API token, no REST quotas.",
+  "type": "module",
+  "bin": {
+    "rusty-figma-mcp": "bin/cli.js",
+    "figma-mcp": "bin/cli.js"
+  },
+  "files": [
+    "bin/cli.js",
+    "README.md"
+  ],
+  "keywords": [
+    "figma",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "design",
+    "rust"
+  ],
+  "license": "MIT",
+  "author": "Mohammad Hasan Akram",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Spiritsurge/rusty-figma-mcp.git",
+    "directory": "npm/rusty-figma-mcp"
+  },
+  "homepage": "https://github.com/Spiritsurge/rusty-figma-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Spiritsurge/rusty-figma-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "rusty-figma-mcp-darwin-arm64": "0.1.0",
+    "rusty-figma-mcp-darwin-x64": "0.1.0",
+    "rusty-figma-mcp-linux-arm64": "0.1.0",
+    "rusty-figma-mcp-linux-x64": "0.1.0",
+    "rusty-figma-mcp-win32-arm64": "0.1.0",
+    "rusty-figma-mcp-win32-x64": "0.1.0"
+  }
+}

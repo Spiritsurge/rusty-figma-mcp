@@ -37,8 +37,14 @@ impl Payload {
     fn capture(frame: Arc<str>, raw: &RawValue) -> Self {
         let base = frame.as_ptr() as usize;
         let start = raw.get().as_ptr() as usize - base;
-        debug_assert!(start + raw.get().len() <= frame.len(), "raw must borrow from frame");
-        Self { span: start..start + raw.get().len(), frame }
+        debug_assert!(
+            start + raw.get().len() <= frame.len(),
+            "raw must borrow from frame"
+        );
+        Self {
+            span: start..start + raw.get().len(),
+            frame,
+        }
     }
 
     /// The result as it arrived on the wire: original key order, original
@@ -273,7 +279,8 @@ mod tests {
         let task = {
             let link = link.clone();
             tokio::spawn(async move {
-                link.request("figma/getNode", None, Duration::from_secs(5)).await
+                link.request("figma/getNode", None, Duration::from_secs(5))
+                    .await
             })
         };
 
@@ -292,7 +299,10 @@ mod tests {
         let (link, mut outbound) = connected().await;
         let task = {
             let link = link.clone();
-            tokio::spawn(async move { link.request("figma/getNode", None, Duration::from_secs(5)).await })
+            tokio::spawn(async move {
+                link.request("figma/getNode", None, Duration::from_secs(5))
+                    .await
+            })
         };
         outbound.recv().await.unwrap();
 
@@ -368,7 +378,10 @@ mod tests {
             tokio::task::yield_now().await;
         }
 
-        assert!(!task.is_finished(), "progress should have kept the request alive");
+        assert!(
+            !task.is_finished(),
+            "progress should have kept the request alive"
+        );
 
         link.handle_frame(r#"{"jsonrpc":"2.0","id":1,"result":"done"}"#.into());
         assert_eq!(task.await.unwrap().unwrap().get(), r#""done""#);
@@ -410,7 +423,10 @@ mod tests {
         outbound.recv().await.unwrap();
 
         tokio::time::advance(Duration::from_secs(31)).await;
-        assert_eq!(task.await.unwrap().unwrap_err().code, codes::DEADLINE_EXCEEDED);
+        assert_eq!(
+            task.await.unwrap().unwrap_err().code,
+            codes::DEADLINE_EXCEEDED
+        );
 
         link.handle_frame(r#"{"jsonrpc":"2.0","id":1,"result":"too late"}"#.into());
         assert_eq!(link.inner.pending.len(), 0);
@@ -433,7 +449,8 @@ mod tests {
         let task = {
             let link = link.clone();
             tokio::spawn(async move {
-                link.request("figma/getDocument", Some(&p), Duration::from_secs(5)).await
+                link.request("figma/getDocument", Some(&p), Duration::from_secs(5))
+                    .await
             })
         };
         let sent = outbound.recv().await.unwrap();

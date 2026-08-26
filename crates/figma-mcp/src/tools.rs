@@ -37,7 +37,11 @@ pub struct FigmaServer {
 
 impl FigmaServer {
     pub fn new(link: Link, render_dir: PathBuf) -> Self {
-        Self { link, render_dir, tool_router: Self::tool_router() }
+        Self {
+            link,
+            render_dir,
+            tool_router: Self::tool_router(),
+        }
     }
 
     /// Write a render to disk and return its path.
@@ -50,7 +54,9 @@ impl FigmaServer {
 
         // Node ids contain a colon, which is not a legal Windows filename.
         let stem = render.node_id.replace(':', "-");
-        let path = self.render_dir.join(format!("{stem}@{}x.{}", render.scale, render.format));
+        let path = self
+            .render_dir
+            .join(format!("{stem}@{}x.{}", render.scale, render.format));
 
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&render.base64)
@@ -73,9 +79,13 @@ impl FigmaServer {
         match self.link.request(method, Some(&encoded), timeout).await {
             Ok(payload) => {
                 debug!(method, bytes = payload.len(), "ok");
-                Ok(CallToolResult::success(vec![ContentBlock::text(payload.get())]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(
+                    payload.get(),
+                )]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(explain(method, &e))])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(explain(
+                method, &e,
+            ))])),
         }
     }
 
@@ -94,12 +104,16 @@ impl FigmaServer {
         match self.link.request(method, Some(&encoded), timeout).await {
             Ok(payload) => match serde_json::from_str::<T>(payload.get()) {
                 Ok(value) => Ok(Ok(value)),
-                Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "{method} returned a result this server could not read: {e}. \
+                Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(
+                    format!(
+                        "{method} returned a result this server could not read: {e}. \
                      The plugin is probably a different version than the server."
-                ))]))),
+                    ),
+                )]))),
             },
-            Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(explain(method, &e))]))),
+            Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(
+                explain(method, &e),
+            )]))),
         }
     }
 }
@@ -266,7 +280,8 @@ impl FigmaServer {
         &self,
         Parameters(args): Parameters<DocumentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.call("figma/getDocument", &args, DOCUMENT_TIMEOUT).await
+        self.call("figma/getDocument", &args, DOCUMENT_TIMEOUT)
+            .await
     }
 
     #[tool(
@@ -289,7 +304,8 @@ impl FigmaServer {
         &self,
         Parameters(args): Parameters<Empty>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.call("figma/getSelection", &args, DEFAULT_TIMEOUT).await
+        self.call("figma/getSelection", &args, DEFAULT_TIMEOUT)
+            .await
     }
 
     #[tool(
@@ -303,15 +319,14 @@ impl FigmaServer {
         self.call("figma/getStyles", &args, DEFAULT_TIMEOUT).await
     }
 
-    #[tool(
-        description = "Read the document's variable collections and their \
-                       values across modes — design tokens, in Figma's terms."
-    )]
+    #[tool(description = "Read the document's variable collections and their \
+                       values across modes — design tokens, in Figma's terms.")]
     async fn get_variable_defs(
         &self,
         Parameters(args): Parameters<Empty>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.call("figma/getVariableDefs", &args, DEFAULT_TIMEOUT).await
+        self.call("figma/getVariableDefs", &args, DEFAULT_TIMEOUT)
+            .await
     }
 
     #[tool(description = "List the pages in the open document.")]
@@ -380,16 +395,15 @@ impl FigmaServer {
         };
 
         debug!(path = %args.path, bytes = bytes.len(), "placing image");
-        self.call("figma/createImage", &wire, DOCUMENT_TIMEOUT).await
+        self.call("figma/createImage", &wire, DOCUMENT_TIMEOUT)
+            .await
     }
 
-    #[tool(
-        description = "Duplicate a node with all its children, styles and \
+    #[tool(description = "Duplicate a node with all its children, styles and \
                        effects intact, optionally at a new position. Returns \
                        the copy's subtree — the copies have new ids. Use this \
                        rather than rebuilding a design from its parts. This \
-                       modifies the document."
-    )]
+                       modifies the document.")]
     async fn clone_node(
         &self,
         Parameters(args): Parameters<CloneNodeArgs>,
@@ -409,11 +423,9 @@ impl FigmaServer {
         self.call("figma/setText", &args, DEFAULT_TIMEOUT).await
     }
 
-    #[tool(
-        description = "Delete nodes by id. Ids that no longer exist are \
+    #[tool(description = "Delete nodes by id. Ids that no longer exist are \
                        reported rather than failing the call. This modifies \
-                       the document."
-    )]
+                       the document.")]
     async fn delete_nodes(
         &self,
         Parameters(args): Parameters<DeleteNodesArgs>,
@@ -429,11 +441,13 @@ impl FigmaServer {
         &self,
         Parameters(args): Parameters<ScreenshotArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let render: Render =
-            match self.call_parsed("figma/getScreenshot", &args, DOCUMENT_TIMEOUT).await? {
-                Ok(render) => render,
-                Err(failure) => return Ok(failure),
-            };
+        let render: Render = match self
+            .call_parsed("figma/getScreenshot", &args, DOCUMENT_TIMEOUT)
+            .await?
+        {
+            Ok(render) => render,
+            Err(failure) => return Ok(failure),
+        };
 
         debug!(node = %render.node_id, bytes = render.base64.len(), "rendered");
 
@@ -450,7 +464,10 @@ impl FigmaServer {
                 render.scale,
                 path.display()
             ),
-            None => format!("{} ({}) rendered at {}x", render.name, render.node_id, render.scale),
+            None => format!(
+                "{} ({}) rendered at {}x",
+                render.name, render.node_id, render.scale
+            ),
         };
 
         // The image block first: clients render it, and a vision model can
@@ -508,10 +525,16 @@ mod tests {
             "get_metadata",
             "get_screenshot",
         ] {
-            assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
+            assert!(
+                names.contains(&expected.to_string()),
+                "{expected} missing from {names:?}"
+            );
         }
         for expected in ["create_image", "clone_node", "delete_nodes", "set_text"] {
-            assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
+            assert!(
+                names.contains(&expected.to_string()),
+                "{expected} missing from {names:?}"
+            );
         }
         assert_eq!(names.len(), 12, "eight reads plus four writes: {names:?}");
     }
@@ -535,7 +558,10 @@ mod tests {
 
     #[test]
     fn timeout_message_suggests_narrowing() {
-        let msg = explain("figma/getDocument", &ErrorObject::deadline_exceeded("x", 60));
+        let msg = explain(
+            "figma/getDocument",
+            &ErrorObject::deadline_exceeded("x", 60),
+        );
         assert!(msg.to_lowercase().contains("narrower"), "{msg}");
     }
 
@@ -544,7 +570,8 @@ mod tests {
 
     #[test]
     fn a_render_is_written_where_the_caption_says() {
-        let dir = std::env::temp_dir().join(format!("figma-mcp-render-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("figma-mcp-render-test-{}", std::process::id()));
         let server = FigmaServer::new(Link::new(), dir.clone());
 
         let render = Render {

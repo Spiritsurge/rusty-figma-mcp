@@ -75,7 +75,9 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::temp_dir().join("figma-mcp-renders"));
     info!(dir = %render_dir.display(), "renders will be saved here");
 
-    let service = FigmaServer::new(server.link.clone(), render_dir).serve(stdio()).await?;
+    let service = FigmaServer::new(server.link.clone(), render_dir)
+        .serve(stdio())
+        .await?;
     service.waiting().await?;
     Ok(())
 }

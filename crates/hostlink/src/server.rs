@@ -34,7 +34,10 @@ pub enum ServeError {
     )]
     RangeExhausted,
     #[error("bind {addr}: {source}")]
-    Bind { addr: SocketAddr, source: std::io::Error },
+    Bind {
+        addr: SocketAddr,
+        source: std::io::Error,
+    },
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -178,7 +181,11 @@ impl Server {
         }
 
         info!(port, host = %config.identity.host, "listening");
-        Ok(Server { port, link: state.link, session_path })
+        Ok(Server {
+            port,
+            link: state.link,
+            session_path,
+        })
     }
 
     /// The URL a host connects to, for logging and for the off-loopback case
@@ -214,7 +221,12 @@ async fn bind_in_range(addr: IpAddr) -> Result<(Vec<TcpListener>, u16), ServeErr
         let listener = match TcpListener::bind(primary).await {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
-            Err(source) => return Err(ServeError::Bind { addr: primary, source }),
+            Err(source) => {
+                return Err(ServeError::Bind {
+                    addr: primary,
+                    source,
+                });
+            }
         };
 
         let mut listeners = vec![listener];
@@ -252,7 +264,13 @@ async fn hello(State(state): State<AppState>) -> impl IntoResponse {
         identity: state.identity,
         connected: state.link.is_connected().await,
     });
-    ([(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))], body)
+    (
+        [(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        )],
+        body,
+    )
 }
 
 async fn upgrade(
@@ -264,7 +282,11 @@ async fn upgrade(
     match params.get("v").map(|v| v.parse::<u32>()) {
         Some(Ok(v)) if v == VERSION => {}
         Some(Ok(v)) => {
-            warn!(their = v, ours = VERSION, "refusing connection: protocol version");
+            warn!(
+                their = v,
+                ours = VERSION,
+                "refusing connection: protocol version"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 format!("protocol v{v} not supported; this server speaks v{VERSION}"),
@@ -340,13 +362,19 @@ fn hostlink_home() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("HLP_HOME") {
         return Some(PathBuf::from(dir));
     }
-    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()?;
     Some(PathBuf::from(home).join(".hostlink"))
 }
 
 fn resolve_session_dir(config: &Config) -> Option<PathBuf> {
     config.session_dir.clone().or_else(|| {
-        Some(hostlink_home()?.join(&config.identity.host).join("sessions"))
+        Some(
+            hostlink_home()?
+                .join(&config.identity.host)
+                .join("sessions"),
+        )
     })
 }
 
@@ -358,7 +386,9 @@ fn resolve_session_dir(config: &Config) -> Option<PathBuf> {
 /// recycled, ports are what actually matter, and a descriptor naming a port we
 /// just bound ourselves is stale by definition.
 async fn prune_stale(dir: &std::path::Path, our_port: u16) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -366,7 +396,9 @@ async fn prune_stale(dir: &std::path::Path, our_port: u16) {
             continue;
         }
 
-        let Ok(body) = std::fs::read(&path) else { continue };
+        let Ok(body) = std::fs::read(&path) else {
+            continue;
+        };
         let Ok(session) = serde_json::from_slice::<SessionFile>(&body) else {
             // Unreadable descriptors are junk too.
             let _ = std::fs::remove_file(&path);
@@ -379,7 +411,11 @@ async fn prune_stale(dir: &std::path::Path, our_port: u16) {
 
         let dead = session.port == our_port || !port_answers(session.port).await;
         if dead {
-            debug!(port = session.port, pid = session.identity.pid, "pruning stale descriptor");
+            debug!(
+                port = session.port,
+                pid = session.identity.pid,
+                "pruning stale descriptor"
+            );
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -409,8 +445,11 @@ fn write_session_file(
     // pid-only name would have them overwrite and then delete each other's
     // descriptors.
     let path = dir.join(format!("{}-{}.json", identity.pid, port));
-    let body = serde_json::to_vec_pretty(&SessionFile { identity: identity.clone(), port })
-        .map_err(std::io::Error::other)?;
+    let body = serde_json::to_vec_pretty(&SessionFile {
+        identity: identity.clone(),
+        port,
+    })
+    .map_err(std::io::Error::other)?;
     std::fs::write(&path, body)?;
 
     #[cfg(unix)]
@@ -451,13 +490,18 @@ mod tests {
     /// A config whose session descriptor lands in a scratch directory rather
     /// than the developer's home.
     fn test_config(label: &str, dir: &std::path::Path) -> Config {
-        Config { session_dir: Some(dir.to_path_buf()), ..Config::loopback(Identity::new("figma", label)) }
+        Config {
+            session_dir: Some(dir.to_path_buf()),
+            ..Config::loopback(Identity::new("figma", label))
+        }
     }
 
     #[tokio::test]
     async fn hello_reports_identity_and_link_is_reachable() {
         let tmp = std::env::temp_dir().join(format!("hostlink-test-{}", std::process::id()));
-        let server = Server::start(test_config("test", &tmp)).await.expect("start");
+        let server = Server::start(test_config("test", &tmp))
+            .await
+            .expect("start");
         assert!(PORT_RANGE.contains(&server.port));
 
         let body = reqwest_get(&format!("http://127.0.0.1:{}/hello", server.port)).await;
@@ -486,13 +530,28 @@ mod tests {
         std::fs::write(&ghost_path, serde_json::to_vec(&ghost).unwrap()).unwrap();
         std::fs::write(tmp.join("garbage.json"), b"not json").unwrap();
 
-        let server = Server::start(test_config("live", &tmp)).await.expect("start");
+        let server = Server::start(test_config("live", &tmp))
+            .await
+            .expect("start");
 
-        assert!(!ghost_path.exists(), "descriptor for a dead port should be gone");
-        assert!(!tmp.join("garbage.json").exists(), "unreadable descriptor should be gone");
+        assert!(
+            !ghost_path.exists(),
+            "descriptor for a dead port should be gone"
+        );
+        assert!(
+            !tmp.join("garbage.json").exists(),
+            "unreadable descriptor should be gone"
+        );
 
-        let remaining: Vec<_> = std::fs::read_dir(&tmp).unwrap().filter_map(|e| e.ok()).collect();
-        assert_eq!(remaining.len(), 1, "only the live server's own descriptor should survive");
+        let remaining: Vec<_> = std::fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(
+            remaining.len(),
+            1,
+            "only the live server's own descriptor should survive"
+        );
         drop(server);
     }
 
@@ -500,13 +559,20 @@ mod tests {
     #[tokio::test]
     async fn a_second_server_takes_the_next_port() {
         let tmp = std::env::temp_dir().join(format!("hostlink-test2-{}", std::process::id()));
-        let first = Server::start(test_config("one", &tmp)).await.expect("first");
-        let second = Server::start(test_config("two", &tmp)).await.expect("second");
+        let first = Server::start(test_config("one", &tmp))
+            .await
+            .expect("first");
+        let second = Server::start(test_config("two", &tmp))
+            .await
+            .expect("second");
         assert_ne!(first.port, second.port);
         assert!(PORT_RANGE.contains(&second.port));
 
         // Both descriptors must coexist; a pid-only filename would collide.
-        let written: Vec<_> = std::fs::read_dir(&tmp).unwrap().filter_map(|e| e.ok()).collect();
+        let written: Vec<_> = std::fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
         assert_eq!(written.len(), 2, "each server needs its own descriptor");
     }
 
@@ -516,7 +582,9 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let rest = url.trim_start_matches("http://");
         let (authority, path) = rest.split_once('/').unwrap();
-        let mut sock = tokio::net::TcpStream::connect(authority).await.expect("connect");
+        let mut sock = tokio::net::TcpStream::connect(authority)
+            .await
+            .expect("connect");
         sock.write_all(
             format!("GET /{path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n")
                 .as_bytes(),

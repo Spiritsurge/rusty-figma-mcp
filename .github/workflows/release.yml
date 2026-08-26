@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, without the leading v
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built on native runners wherever one exists, which avoids
+          # cross-compilation entirely. Windows arm64 has no runner here, so
+          # it is the one target cross-compiled — safe because the workspace
+          # has no C dependencies.
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin, runner: macos-13 }
+          - { target: aarch64-apple-darwin, runner: macos-latest }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest }
+          - { target: aarch64-pc-windows-msvc, runner: windows-latest, cross: true }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release -p figma-mcp --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staged/${{ matrix.target }}
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/figma-mcp.exe staged/${{ matrix.target }}/
+          else
+            cp target/${{ matrix.target }}/release/figma-mcp staged/${{ matrix.target }}/
+            chmod +x staged/${{ matrix.target }}/figma-mcp
+          fi
+          ls -la staged/${{ matrix.target }}/
+
+      # A binary that cannot start is worse than a failed build, and a
+      # cross-compiled one has never been executed at this point.
+      - name: Smoke the binary
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: |
+          BIN=staged/${{ matrix.target }}/figma-mcp
+          [ "${{ runner.os }}" = "Windows" ] && BIN="$BIN.exe"
+          "$BIN" --version
+          "$BIN" --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: staged/${{ matrix.target }}
+          if-no-files-found: error
+
+  plugin:
+    name: plugin bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - run: npm ci
+        working-directory: plugin
+      - run: npm run build
+        working-directory: plugin
+
+      # The plugin is half the product and cannot be installed from npm, so it
+      # ships as a zip anyone can import from a manifest.
+      - name: Package the plugin
+        run: |
+          mkdir -p staged/plugin
+          cp -r plugin/dist plugin/manifest.json staged/plugin/
+          cd staged && zip -r ../figma-plugin.zip plugin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: figma-plugin
+          path: figma-plugin.zip
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: [build, plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble npm packages
+        run: |
+          mv artifacts/figma-plugin/figma-plugin.zip . 2>/dev/null || true
+          rm -rf artifacts/figma-plugin
+          node scripts/build-npm.mjs "${{ steps.version.outputs.value }}" artifacts npm-dist
+
+      # Platform packages publish first: the launcher names them in its
+      # optionalDependencies, and a launcher that resolves to nothing is worse
+      # than a delayed release.
+      - name: Publish platform packages
+        run: |
+          for dir in npm-dist/rusty-figma-mcp-*; do
+            echo "publishing $dir"
+            npm publish "$dir" --access public --provenance
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish launcher
+        run: npm publish npm-dist/rusty-figma-mcp --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Name the release archives by target
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            target=$(basename "$dir")
+            if [ -f "$dir/figma-mcp.exe" ]; then
+              (cd "$dir" && zip -q "../../release/figma-mcp-$target.zip" figma-mcp.exe)
+            elif [ -f "$dir/figma-mcp" ]; then
+              tar -czf "release/figma-mcp-$target.tar.gz" -C "$dir" figma-mcp
+            fi
+          done
+          cp figma-plugin.zip release/ 2>/dev/null || true
+          ls -la release/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            ```json
+            {
+              "mcpServers": {
+                "figma": { "command": "npx", "args": ["-y", "rusty-figma-mcp"] }
+              }
+            }
+            ```
+
+            Or download the binary for your platform below — it has no runtime
+            dependency, so nothing else needs installing.
+
+            The Figma plugin is the other half of the bridge: download
+            `figma-plugin.zip`, unzip it, and import `plugin/manifest.json` via
+            **Plugins → Development → Import plugin from manifest…**

@@ -49,7 +49,12 @@ pub struct Request<'a> {
 
 impl<'a> Request<'a> {
     pub fn new(id: u64, method: &'a str, params: Option<&'a RawValue>) -> Self {
-        Self { jsonrpc: JsonRpcVersion, id, method, params }
+        Self {
+            jsonrpc: JsonRpcVersion,
+            id,
+            method,
+            params,
+        }
     }
 }
 
@@ -144,7 +149,10 @@ pub struct ErrorObject {
 
 impl ErrorObject {
     pub fn new(code: i32, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 
     pub fn deadline_exceeded(method: &str, secs: u64) -> Self {
@@ -155,7 +163,10 @@ impl ErrorObject {
     }
 
     pub fn disconnected() -> Self {
-        Self::new(codes::DISCONNECTED, "host disconnected while the request was in flight")
+        Self::new(
+            codes::DISCONNECTED,
+            "host disconnected while the request was in flight",
+        )
     }
 }
 
@@ -192,8 +203,14 @@ impl<'a> Incoming<'a> {
         match self.id {
             Some(id) => match (self.result, self.error) {
                 (Some(_), Some(_)) => Err(MalformedFrame::ResponseWithBoth { id }),
-                (Some(result), None) => Ok(Frame::Response { id, outcome: Outcome::Ok(result) }),
-                (None, Some(error)) => Ok(Frame::Response { id, outcome: Outcome::Err(error) }),
+                (Some(result), None) => Ok(Frame::Response {
+                    id,
+                    outcome: Outcome::Ok(result),
+                }),
+                (None, Some(error)) => Ok(Frame::Response {
+                    id,
+                    outcome: Outcome::Err(error),
+                }),
                 (None, None) => Err(MalformedFrame::ResponseWithoutOutcome { id }),
             },
             None if self.method == Some(PROGRESS_METHOD) => {
@@ -212,14 +229,19 @@ mod tests {
     use super::*;
 
     fn classify(json: &str) -> Result<Frame<'_>, MalformedFrame> {
-        serde_json::from_str::<Incoming>(json).expect("valid json").classify()
+        serde_json::from_str::<Incoming>(json)
+            .expect("valid json")
+            .classify()
     }
 
     #[test]
     fn response_with_result_is_a_response() {
         let frame = classify(r#"{"jsonrpc":"2.0","id":7,"result":{"a":1}}"#).unwrap();
         match frame {
-            Frame::Response { id: 7, outcome: Outcome::Ok(v) } => {
+            Frame::Response {
+                id: 7,
+                outcome: Outcome::Ok(v),
+            } => {
                 assert_eq!(v.get(), r#"{"a":1}"#);
             }
             other => panic!("expected an Ok response, got {other:?}"),
@@ -232,7 +254,10 @@ mod tests {
             classify(r#"{"jsonrpc":"2.0","id":7,"error":{"code":-32004,"message":"gone"}}"#)
                 .unwrap();
         match frame {
-            Frame::Response { id: 7, outcome: Outcome::Err(e) } => {
+            Frame::Response {
+                id: 7,
+                outcome: Outcome::Err(e),
+            } => {
                 assert_eq!(e.code, codes::NOT_FOUND);
                 assert_eq!(e.message, "gone");
             }
@@ -245,7 +270,13 @@ mod tests {
     #[test]
     fn null_result_is_success_not_absence() {
         let frame = classify(r#"{"jsonrpc":"2.0","id":1,"result":null}"#).unwrap();
-        assert!(matches!(frame, Frame::Response { outcome: Outcome::Ok(_), .. }));
+        assert!(matches!(
+            frame,
+            Frame::Response {
+                outcome: Outcome::Ok(_),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -274,7 +305,10 @@ mod tests {
     #[test]
     fn response_with_neither_outcome_is_malformed() {
         let err = classify(r#"{"jsonrpc":"2.0","id":3}"#).unwrap_err();
-        assert!(matches!(err, MalformedFrame::ResponseWithoutOutcome { id: 3 }));
+        assert!(matches!(
+            err,
+            MalformedFrame::ResponseWithoutOutcome { id: 3 }
+        ));
     }
 
     #[test]
@@ -287,7 +321,9 @@ mod tests {
 
     #[test]
     fn wrong_jsonrpc_version_is_refused() {
-        assert!(serde_json::from_str::<Incoming>(r#"{"jsonrpc":"1.0","id":1,"result":1}"#).is_err());
+        assert!(
+            serde_json::from_str::<Incoming>(r#"{"jsonrpc":"1.0","id":1,"result":1}"#).is_err()
+        );
     }
 
     /// §7: the payload must survive as bytes, not be re-serialized through a
@@ -297,7 +333,10 @@ mod tests {
         let json = r#"{"jsonrpc":"2.0","id":1,"result":{"z":1,"a":[1.50,2],"n":{"deep":true}}}"#;
         let frame = classify(json).unwrap();
         match frame {
-            Frame::Response { outcome: Outcome::Ok(v), .. } => {
+            Frame::Response {
+                outcome: Outcome::Ok(v),
+                ..
+            } => {
                 assert_eq!(v.get(), r#"{"z":1,"a":[1.50,2],"n":{"deep":true}}"#);
             }
             other => panic!("expected Ok, got {other:?}"),
