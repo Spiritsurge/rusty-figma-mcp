@@ -18,7 +18,7 @@ async function probe(port: number): Promise<Session | null> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/hello`, { signal: abort.signal });
+    const response = await fetch(`http://localhost:${port}/hello`, { signal: abort.signal });
     if (!response.ok) return null;
     const identity = (await response.json()) as Omit<Session, "port">;
     return { ...identity, port };

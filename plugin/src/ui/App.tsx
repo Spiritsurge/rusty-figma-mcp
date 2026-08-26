@@ -143,7 +143,7 @@ function Connected({
 
       <div className="target">
         <div className="label">{session.label}</div>
-        <div className="port">127.0.0.1:{session.port}</div>
+        <div className="port">localhost:{session.port}</div>
       </div>
 
       <button className="disconnect" onClick={onDisconnect}>

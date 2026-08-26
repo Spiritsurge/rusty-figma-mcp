@@ -2,7 +2,7 @@
 //! upgrade. See `PROTOCOL.md` §4, §5.
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -130,7 +130,7 @@ impl Server {
             );
         }
 
-        let (listener, port) = bind_in_range(config.bind).await?;
+        let (listeners, port) = bind_in_range(config.bind).await?;
 
         let state = AppState {
             link: Link::new(),
@@ -147,11 +147,14 @@ impl Server {
             .inspect_err(|e| debug!(error = %e, "session descriptor not written"))
             .ok();
 
-        tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
-                warn!(error = %e, "server stopped");
-            }
-        });
+        for listener in listeners {
+            let app = app.clone();
+            tokio::spawn(async move {
+                if let Err(e) = axum::serve(listener, app).await {
+                    warn!(error = %e, "server stopped");
+                }
+            });
+        }
 
         info!(port, host = %config.identity.host, "listening");
         Ok(Server { port, link: state.link, session_path })
@@ -175,14 +178,38 @@ impl Drop for Server {
     }
 }
 
-async fn bind_in_range(addr: IpAddr) -> Result<(TcpListener, u16), ServeError> {
+/// Bind the first free port in the range, on every address the host may reach
+/// us by.
+///
+/// The host connects to `localhost`, which resolves to `::1` before `127.0.0.1`
+/// on most systems. Clients generally fall back to IPv4 when `::1` refuses, but
+/// relying on that makes the connection depend on the client's resolver. Both
+/// loopback families are bound instead, so either resolution works directly.
+///
+/// IPv6 is best-effort: a host with it disabled still gets a working server.
+async fn bind_in_range(addr: IpAddr) -> Result<(Vec<TcpListener>, u16), ServeError> {
     for port in PORT_RANGE {
-        let sock = SocketAddr::new(addr, port);
-        match TcpListener::bind(sock).await {
-            Ok(l) => return Ok((l, port)),
+        let primary = SocketAddr::new(addr, port);
+        let listener = match TcpListener::bind(primary).await {
+            Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
-            Err(source) => return Err(ServeError::Bind { addr: sock, source }),
+            Err(source) => return Err(ServeError::Bind { addr: primary, source }),
+        };
+
+        let mut listeners = vec![listener];
+
+        if addr == IpAddr::V4(Ipv4Addr::LOCALHOST) {
+            let v6 = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
+            match TcpListener::bind(v6).await {
+                Ok(l) => listeners.push(l),
+                // The port being taken on ::1 alone means another server holds
+                // half the pair; skip it rather than serve an ambiguous port.
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
+                Err(e) => debug!(error = %e, "no IPv6 loopback; IPv4 only"),
+            }
         }
+
+        return Ok((listeners, port));
     }
     Err(ServeError::RangeExhausted)
 }

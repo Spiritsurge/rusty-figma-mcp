@@ -50,7 +50,7 @@ export function useLink(session: Session | null) {
       setState("connecting");
 
       const socket = new WebSocket(
-        `ws://127.0.0.1:${session.port}/link?v=${PROTOCOL_VERSION}`,
+        `ws://localhost:${session.port}/link?v=${PROTOCOL_VERSION}`,
       );
       socketRef.current = socket;
 
