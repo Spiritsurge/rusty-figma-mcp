@@ -1,8 +1,12 @@
 //! The Figma binding: MCP tools mapped onto `figma/*` link methods.
 //!
 //! Every tool is the same three steps — serialize params, call the host, hand
-//! back the payload untouched. The payload is never parsed here either (§7); it
+//! back the payload untouched. The payload is not parsed here either (§7); it
 //! goes to the MCP client as the bytes Figma produced.
+//!
+//! `get_screenshot` is the single exception, and a deliberate one: its base64
+//! has to be lifted out of the envelope to become an MCP image block. See
+//! [`Render`].
 
 use std::time::Duration;
 
@@ -52,6 +56,48 @@ impl FigmaServer {
             Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(explain(method, &e))])),
         }
     }
+
+    /// Call a host method whose result needs restructuring before it reaches
+    /// the client, rather than being forwarded verbatim.
+    async fn call_parsed<P: Serialize, T: for<'de> Deserialize<'de>>(
+        &self,
+        method: &str,
+        params: &P,
+        timeout: Duration,
+    ) -> Result<Result<T, CallToolResult>, ErrorData> {
+        let encoded = serde_json::to_string(params)
+            .and_then(RawValue::from_string)
+            .map_err(|e| ErrorData::internal_error(format!("encode params: {e}"), None))?;
+
+        match self.link.request(method, Some(&encoded), timeout).await {
+            Ok(payload) => match serde_json::from_str::<T>(payload.get()) {
+                Ok(value) => Ok(Ok(value)),
+                Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "{method} returned a result this server could not read: {e}. \
+                     The plugin is probably a different version than the server."
+                ))]))),
+            },
+            Err(e) => Ok(Err(CallToolResult::error(vec![ContentBlock::text(explain(method, &e))]))),
+        }
+    }
+}
+
+/// What the host returns for a render.
+///
+/// Screenshots are the one place a payload is parsed rather than forwarded
+/// (§7). The rule exists so that document reads, which are unbounded, never
+/// become object graphs; a render is bounded by the image itself, and its
+/// base64 has to be lifted out of the envelope regardless to become an MCP
+/// image block. Forwarding it as JSON text would hand the model a wall of
+/// base64 it cannot look at, which defeats the point of the tool.
+#[derive(Debug, Deserialize)]
+struct Render {
+    #[serde(rename = "nodeId")]
+    node_id: String,
+    name: String,
+    format: String,
+    scale: f32,
+    base64: String,
 }
 
 /// Turn a protocol error into something an agent can act on.
@@ -201,7 +247,23 @@ impl FigmaServer {
         &self,
         Parameters(args): Parameters<ScreenshotArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.call("figma/getScreenshot", &args, DOCUMENT_TIMEOUT).await
+        let render: Render =
+            match self.call_parsed("figma/getScreenshot", &args, DOCUMENT_TIMEOUT).await? {
+                Ok(render) => render,
+                Err(failure) => return Ok(failure),
+            };
+
+        debug!(node = %render.node_id, bytes = render.base64.len(), "rendered");
+
+        // The image block first: clients render it, and a vision model can
+        // actually see it. The caption carries what the image cannot say.
+        Ok(CallToolResult::success(vec![
+            ContentBlock::image(render.base64, format!("image/{}", render.format)),
+            ContentBlock::text(format!(
+                "{} ({}) rendered at {}x",
+                render.name, render.node_id, render.scale
+            )),
+        ]))
     }
 }
 

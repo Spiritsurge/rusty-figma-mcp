@@ -155,7 +155,9 @@ function Connected({
             : "connected"
           : state === "connecting"
             ? "connecting…"
-            : "connection lost — retrying"}
+            : state === "ended"
+              ? "session ended"
+              : "connection lost — retrying"}
       </div>
 
       <div className="target">
@@ -164,7 +166,7 @@ function Connected({
       </div>
 
       <button className="disconnect" onClick={onDisconnect}>
-        Disconnect
+        {state === "ended" ? "Back to sessions" : "Disconnect"}
       </button>
     </div>
   );

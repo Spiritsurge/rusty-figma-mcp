@@ -1,0 +1,12 @@
+{
+  "name": "rusty-figma-mcp-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Dev scripts for rusty-figma-mcp",
+  "scripts": {
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  }
+}

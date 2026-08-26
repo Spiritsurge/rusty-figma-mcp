@@ -3,9 +3,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { Session } from "./useSessions";
 
-export type LinkState = "idle" | "connecting" | "connected" | "lost";
+export type LinkState = "idle" | "connecting" | "connected" | "lost" | "ended";
 
 const RECONNECT_DELAY_MS = 1500;
+
+/**
+ * Whether the server on this port is still the one the user chose.
+ *
+ * A port is not an identity. If the picked server dies and another takes its
+ * slot, reconnecting blindly would hand the user's session to a process they
+ * never selected — silently transferring the authorization gesture that
+ * PROTOCOL.md §5 rests on. pid and start time together identify the process.
+ */
+async function isSameServer(session: Session): Promise<boolean> {
+  try {
+    const response = await fetch(`http://localhost:${session.port}/hello`);
+    if (!response.ok) return false;
+    const identity = await response.json();
+    return identity.pid === session.pid && identity.started_at_ms === session.started_at_ms;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Holds the socket and relays between it and the plugin main thread.
@@ -45,9 +64,19 @@ export function useLink(session: Session | null) {
 
     let cancelled = false;
 
-    const connect = () => {
+    const connect = async () => {
       if (cancelled) return;
       setState("connecting");
+
+      // Verify identity before every attempt, including the first: the picker's
+      // list can be a few seconds stale.
+      if (!(await isSameServer(session))) {
+        if (cancelled) return;
+        setState("ended");
+        socketRef.current = null;
+        return;
+      }
+      if (cancelled) return;
 
       const socket = new WebSocket(
         `ws://localhost:${session.port}/link?v=${PROTOCOL_VERSION}`,
@@ -75,7 +104,7 @@ export function useLink(session: Session | null) {
         socketRef.current = null;
         setState("lost");
         setInFlight(0);
-        reconnectRef.current = window.setTimeout(connect, RECONNECT_DELAY_MS);
+        reconnectRef.current = window.setTimeout(() => void connect(), RECONNECT_DELAY_MS);
       };
 
       socket.onerror = () => {
@@ -84,7 +113,7 @@ export function useLink(session: Session | null) {
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       cancelled = true;
