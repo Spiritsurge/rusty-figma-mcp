@@ -6,3 +6,6 @@
 
 *.png binary
 *.pdf binary
+
+Cargo.lock linguist-generated
+plugin/package-lock.json linguist-generated

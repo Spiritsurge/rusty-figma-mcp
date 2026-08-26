@@ -1,0 +1,26 @@
+{
+  "name": "rusty-figma-mcp-plugin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config vite.config.ui.ts && vite build --config vite.config.main.ts",
+    "build:ui": "vite build --config vite.config.ui.ts",
+    "build:main": "vite build --config vite.config.main.ts",
+    "watch": "vite build --watch --config vite.config.main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.109.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

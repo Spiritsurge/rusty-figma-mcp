@@ -1,0 +1,17 @@
+{
+  "name": "Rusty Figma MCP",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/index.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "http://127.0.0.1:*",
+      "ws://127.0.0.1:*",
+      "http://localhost:*",
+      "ws://localhost:*"
+    ],
+    "reasoning": "Connects to a Host Link server running on this machine so an MCP client can read the open document. Loopback only; nothing leaves the machine."
+  }
+}
