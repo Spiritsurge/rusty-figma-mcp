@@ -219,6 +219,9 @@ footer .product {
 
 footer .author {
   color: var(--figma-color-text-secondary, #8c8c8c);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .badge.ended {

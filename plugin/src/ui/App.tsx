@@ -75,7 +75,7 @@ export default function App() {
 
       <footer>
         <span className="product">Rusty Figma MCP</span>
-        <span className="author">made by Spiritsurge</span>
+        <span className="author">made by Mohammad Hasan Akram</span>
       </footer>
     </div>
   );
