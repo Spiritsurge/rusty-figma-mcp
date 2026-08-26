@@ -53,37 +53,46 @@ The wire format is specified in [PROTOCOL.md](PROTOCOL.md).
 
 ## Setup
 
-### 1. Build
+### 1. Point your MCP client at the server
+
+```json
+{
+  "mcpServers": {
+    "figma": { "command": "npx", "args": ["-y", "rusty-figma-mcp"] }
+  }
+}
+```
+
+Node is used only to fetch and launch the binary, never to run it — the server
+is a static executable with no runtime dependency. Prebuilt binaries ship as
+platform packages under `optionalDependencies`, so npm installs exactly the one
+your machine needs and nothing is downloaded at install time.
+
+Prefer no Node at all? Take the binary for your platform from
+[Releases](https://github.com/Spiritsurge/rusty-figma-mcp/releases) and give its
+path as `command`.
+
+The session appears in the plugin's list under your working directory's name.
+Override it with `--label "something else"` if you run several.
+
+### 2. Install the Figma plugin
+
+The plugin is the other half of the bridge. Download `figma-plugin.zip` from
+[Releases](https://github.com/Spiritsurge/rusty-figma-mcp/releases), unzip it,
+then in Figma desktop go to **Plugins → Development → Import plugin from
+manifest…** and choose `plugin/manifest.json`.
+
+### 3. Connect
+
+Open a file, run the plugin, and pick your session from the list. The badge goes
+green and your MCP client can read the document.
+
+### Building from source
 
 ```sh
 cargo build --release              # server → target/release/figma-mcp
 cd plugin && npm install && npm run build
 ```
-
-### 2. Point your MCP client at the binary
-
-```json
-{
-  "mcpServers": {
-    "figma": {
-      "command": "/absolute/path/to/target/release/figma-mcp"
-    }
-  }
-}
-```
-
-The session appears in the plugin's list under your working directory's name.
-Override it with `--label "something else"` if you run several.
-
-### 3. Load the plugin in Figma
-
-Figma desktop → **Plugins → Development → Import plugin from manifest…** and
-choose `plugin/manifest.json`.
-
-### 4. Connect
-
-Open a file, run the plugin, and pick your session from the list. The badge goes
-green and your MCP client can read the document.
 
 ## Tools
 
