@@ -6,8 +6,9 @@
 import { handlers, NotFound } from "./handlers";
 import { codes, err, ok, progress, type ToMain, type ToUi } from "./protocol";
 
-// Tall enough for the activity log to show a few rows without scrolling.
-const UI_SIZE = { width: 340, height: 440 };
+// Enough for a few activity rows; the log scrolls past that rather than
+// the panel growing to fit.
+const UI_SIZE = { width: 340, height: 360 };
 
 function send(message: ToUi): void {
   figma.ui.postMessage(message);

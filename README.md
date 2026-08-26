@@ -1,10 +1,10 @@
 # rusty-figma-mcp
 
 Read the Figma file you have open from Cursor, Claude Code, or any MCP client.
-One static binary, no API token, no REST quotas.
+One 3 MB binary, no API token, no REST quotas.
 
-> **Status:** early. Eight read tools, working end to end. Write tools are not
-> implemented yet.
+> **Status:** eight read tools, working end to end against real documents.
+> Write tools are not implemented.
 
 ## Why this exists
 
@@ -15,13 +15,15 @@ one.
 This talks to a **plugin running in your own Figma session** instead, so there
 is no token and no quota. It reads the file you already have open.
 
-Two things make it different from other tools in this space:
+Three things make it different from other tools in this space:
 
-- **One binary, no runtime.** ~6 MB, statically linked. Nothing to install
-  alongside it — no Node, no Python, no .NET.
+- **One binary, no runtime.** 3 MB, statically linked. No Node, no Python, no
+  .NET to install alongside it.
 - **Documents stream through untouched.** The server parses only the envelope
   around a payload, never the payload itself, so memory stays flat whether the
   document is 100 KB or 100 MB.
+- **You can see what the agent is doing.** The plugin panel lists every
+  operation as it runs, with live progress and timings.
 
 ## How it works
 
@@ -33,7 +35,7 @@ So anything driving Figma from outside has to relay across that gap.
   MCP client (Cursor, Claude Code, …)
         │  stdio, JSON-RPC
         ▼
-  figma-mcp ──── listens on 127.0.0.1:518xx
+  figma-mcp ──── listens on localhost:518xx
         │  WebSocket, JSON-RPC
         ▼
   plugin UI iframe
@@ -94,14 +96,53 @@ green and your MCP client can read the document.
 | `get_pages` | Pages in the file. |
 | `get_styles` | Local paint, text, effect and grid styles. |
 | `get_variable_defs` | Variable collections and per-mode values — design tokens. |
-| `get_screenshot` | A node or page rendered to a base64 PNG. |
+| `get_screenshot` | A node or page rendered as an image the model can see. |
+
+### What the output looks like
+
+Colours come back as CSS hex, and anything sitting at its Figma default is
+dropped, so what you read is what differs:
+
+```json
+{
+  "id": "62:17", "name": "Frame 1", "type": "FRAME",
+  "width": 430, "height": 932,
+  "fills": [{ "type": "SOLID", "opacity": 0.5, "color": "#000000" }],
+  "layout": { "mode": "HORIZONTAL", "itemSpacing": 10, "paddingTop": 0 },
+  "childCount": 1, "truncated": true
+}
+```
+
+`truncated` with `childCount` marks where a `depth` limit cut the tree, so a
+consumer can tell a real leaf from a boundary and ask for more if it needs to.
+`get_document` at `depth: 0` returns a 190-byte outline of a file that runs to
+megabytes in full.
+
+`get_screenshot` returns an MCP image block, so the model sees the design rather
+than a wall of base64.
+
+## Watching it work
+
+The plugin panel is the only place you can see an agent touching your file, so
+it shows the operations rather than a count:
+
+```
+●  Reading your selection                    40%
+○  Checking the file                        180ms
+○  Rendering 127:7                           1.4s
+○  Reading design tokens                    620ms
+```
+
+Running rows carry live progress; finished ones recede and show how long they
+took. Failures show in red with the plugin's own message.
 
 ## Security
 
-The server binds loopback and one plugin connection at a time. Authorization is
-your explicit pick in the plugin UI — a gesture no other local process can make
-on your behalf. There is no ambient always-on socket accepting whatever
-connects.
+The server binds loopback and serves one plugin connection at a time.
+Authorization is your explicit pick in the plugin UI — a gesture no other local
+process can make on your behalf. There is no ambient always-on socket accepting
+whatever connects, and the plugin re-checks a server's identity before every
+reconnect, so a dead session's port cannot be inherited by another process.
 
 `--bind` accepts a non-loopback address for remote setups. That mode requires a
 token, printed at startup, and warns loudly. Don't use it unless you mean it.
@@ -109,14 +150,16 @@ token, printed at startup, and warns loudly. Don't use it unless you mean it.
 ## Development
 
 ```sh
-cargo test                    # 41 tests: protocol, correlation, real sockets
+cargo test                    # 42 tests: protocol, correlation, real sockets
 cargo clippy --workspace --all-targets
-node scripts/smoke.mjs        # full path, stub host in place of Figma
+npm install && npm run smoke  # full path, stub host in place of Figma
 cd plugin && npm run typecheck
 ```
 
 `scripts/smoke.mjs` drives the real binary with a fake plugin, so most protocol
-work can be verified without Figma's reload loop.
+work can be verified without Figma's reload loop. Note that it binds a real port
+in the discovery range — close the Figma plugin first, or a live one may attach
+to the test's server.
 
 ## Prior art
 

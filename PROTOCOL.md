@@ -174,6 +174,19 @@ At most one host connection is served per process. A second connection replaces
 the first (a plugin reload is indistinguishable from this, per C7). In-flight
 requests belonging to the replaced connection fail with -32002.
 
+### A port is not an identity
+
+C7 makes reconnection routine, which creates a trap: if the chosen server dies
+and another binds its slot, a host that reconnects by port alone silently
+attaches to a process the user never picked — transferring the very gesture this
+section rests on.
+
+So a host **must** re-probe `/hello` before every connection attempt, including
+the first, and proceed only if `pid` and `started_at_ms` both still match what
+the user selected. A picker's list can be seconds stale, so the first attempt is
+no safer than a later one. A mismatch ends the session and returns the user to
+the picker; it is never resolved by connecting anyway.
+
 ## 6. Deadlines
 
 Each request carries a deadline, default 30 s, per-method overridable (document
@@ -199,6 +212,18 @@ move, not an object graph.
 
 This is a load-bearing decision, not an optimisation: it is what makes the memory
 profile flat with respect to document size, and it must survive refactors.
+
+### The one exception
+
+A method whose result must be *restructured* before it reaches the MCP client
+may parse it. Today that is `figma/getScreenshot` alone: its base64 has to be
+lifted out of the envelope to become an MCP image block, and forwarding it as
+JSON text would hand the model a wall of characters it cannot look at.
+
+The exception is safe because a render is bounded by the image itself. The rule
+exists for the unbounded case — document reads, which have no ceiling — so any
+future exception must clear the same bar: bounded output, and a genuine need to
+reshape rather than merely inspect it.
 
 ## 8. Method namespace
 
