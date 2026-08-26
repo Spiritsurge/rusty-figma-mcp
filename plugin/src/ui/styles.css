@@ -188,3 +188,32 @@ header {
   border-color: var(--figma-color-border-danger-strong, #f24822);
   color: var(--figma-color-text-danger, #f24822);
 }
+
+.in-use {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--figma-color-bg-warning-tertiary, #fff4d1);
+  color: var(--figma-color-text-warning, #a07500);
+}
+
+footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--figma-color-border, #e5e5e5);
+  font-size: 10px;
+}
+
+footer .product {
+  font-weight: 600;
+  color: var(--figma-color-text, #1e1e1e);
+}
+
+footer .author {
+  color: var(--figma-color-text-secondary, #8c8c8c);
+}

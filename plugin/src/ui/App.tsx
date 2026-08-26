@@ -64,6 +64,11 @@ export default function App() {
           onPick={setSelected}
         />
       )}
+
+      <footer>
+        <span className="product">Rusty Figma MCP</span>
+        <span className="author">made by Spiritsurge</span>
+      </footer>
     </div>
   );
 }
@@ -107,7 +112,13 @@ function Picker({
             <li key={session.port}>
               <button className="session" onClick={() => onPick(session)}>
                 <span className="label">{session.label}</span>
-                <span className="port">:{session.port}</span>
+                {session.connected ? (
+                  <span className="in-use" title="Another Figma window is using this session">
+                    in use
+                  </span>
+                ) : (
+                  <span className="port">:{session.port}</span>
+                )}
               </button>
             </li>
           ))}

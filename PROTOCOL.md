@@ -100,12 +100,17 @@ undiscoverable server is worse than a failed start.
 
 ### The `/hello` probe
 
-`GET http://127.0.0.1:<port>/hello` requires no authentication and returns:
+`GET http://localhost:<port>/hello` requires no authentication and returns:
 
 ```json
 { "v": 1, "host": "figma", "pid": 31337,
-  "label": "cursor — velocity-web", "started_at_ms": 1787740462000 }
+  "label": "cursor — velocity-web", "started_at_ms": 1787740462000,
+  "connected": false }
 ```
+
+`connected` reports whether a host is already attached (§5), so the picker can
+show which sessions are free rather than making the user discover it by
+connecting. `started_at_ms` is epoch milliseconds as a 64-bit integer.
 
 The host UI probes all twenty ports on open, lists what answers, and the user
 picks one. A dead server is a port that does not answer — no stale state to
@@ -116,10 +121,16 @@ which is what makes "which editor is this?" answerable at a glance.
 
 ### Session descriptors
 
-A server also writes `${HLP_HOME:-~/.hostlink}/figma/sessions/<pid>.json` with
-the same fields plus `port`, `0600` where the platform supports it, removed on
-clean shutdown. This is for CLI tooling and debugging only — **the host UI never
-reads it**, and nothing in the protocol depends on it.
+A server also writes `${HLP_HOME:-~/.hostlink}/figma/sessions/<pid>-<port>.json`
+with the same fields plus `port`, `0600` where the platform supports it, removed
+on clean shutdown. This is for CLI tooling and debugging only — **the host UI
+never reads it**, and nothing in the protocol depends on it.
+
+A killed process never gets to remove its own descriptor, so each server prunes
+on startup. Staleness is decided by **whether anything still answers on the
+recorded port**, not by whether the pid exists: pids are recycled, ports are what
+callers actually reach, and a descriptor naming the port we just bound is stale
+by definition. A descriptor bearing the running process's own pid is left alone.
 
 Consequences of the whole arrangement:
 
@@ -133,12 +144,17 @@ Consequences of the whole arrangement:
 The host connects to:
 
 ```
-ws://127.0.0.1:<port>/link?v=1
+ws://localhost:<port>/link?v=1
 ```
 
 `v` is the protocol major version; an unknown value is refused with 400.
 
 Origin is **not** checked: the iframe is a `data:` URL and sends `Origin: null`.
+
+The host addresses the server as `localhost` rather than by IP, because Figma's
+manifest rejects IP literals in `allowedDomains`. `localhost` resolves to `::1`
+before `127.0.0.1` on most systems, so the server binds **both loopback
+families** on its port rather than relying on the client to fall back.
 
 ### The threat model, stated honestly
 

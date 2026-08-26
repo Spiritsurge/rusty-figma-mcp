@@ -12,6 +12,8 @@ export interface Session {
   pid: number;
   label: string;
   started_at_ms: number;
+  /** True when another editor already has this session's link. */
+  connected: boolean;
 }
 
 async function probe(port: number): Promise<Session | null> {

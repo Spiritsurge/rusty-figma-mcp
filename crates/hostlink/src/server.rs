@@ -48,7 +48,10 @@ pub struct Identity {
     pub pid: u32,
     /// Human-readable, so "which editor is this?" is answerable at a glance.
     pub label: String,
-    pub started_at_ms: u128,
+    /// Epoch milliseconds. u64 rather than u128 deliberately: #[serde(flatten)]
+    /// buffers through serde_json::Value, which cannot represent u128, so a
+    /// wider type here silently breaks both /hello and descriptor reading.
+    pub started_at_ms: u64,
 }
 
 impl Identity {
@@ -61,9 +64,18 @@ impl Identity {
             started_at_ms: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_millis(),
+                .as_millis() as u64,
         }
     }
+}
+
+/// What `/hello` returns: the server's identity plus whether a host is already
+/// attached, so a picker can show which sessions are free (§4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hello {
+    #[serde(flatten)]
+    pub identity: Identity,
+    pub connected: bool,
 }
 
 /// A session descriptor, written for CLI tooling only. Nothing in the protocol
@@ -143,9 +155,18 @@ impl Server {
             .route("/link", get(upgrade))
             .with_state(state.clone());
 
-        let session_path = write_session_file(&config.identity, port, config.session_dir.as_deref())
+        let session_dir = resolve_session_dir(&config);
+        if let Some(dir) = &session_dir {
+            prune_stale(dir, port).await;
+        }
+
+        let session_path = session_dir
+            .as_deref()
+            .map(|dir| write_session_file(&config.identity, port, dir))
+            .transpose()
             .inspect_err(|e| debug!(error = %e, "session descriptor not written"))
-            .ok();
+            .ok()
+            .flatten();
 
         for listener in listeners {
             let app = app.clone();
@@ -217,7 +238,10 @@ async fn bind_in_range(addr: IpAddr) -> Result<(Vec<TcpListener>, u16), ServeErr
 /// Unauthenticated identity probe. The host UI scans the range and lists what
 /// answers (§4).
 async fn hello(State(state): State<AppState>) -> impl IntoResponse {
-    axum::Json(state.identity)
+    axum::Json(Hello {
+        identity: state.identity,
+        connected: state.link.is_connected().await,
+    })
 }
 
 async fn upgrade(
@@ -309,19 +333,66 @@ fn hostlink_home() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".hostlink"))
 }
 
+fn resolve_session_dir(config: &Config) -> Option<PathBuf> {
+    config.session_dir.clone().or_else(|| {
+        Some(hostlink_home()?.join(&config.identity.host).join("sessions"))
+    })
+}
+
+/// Remove descriptors that no longer describe a running server.
+///
+/// A process that is killed rather than shut down never runs `Drop`, so its
+/// descriptor outlives it. Staleness is decided by whether anything still
+/// answers on the recorded port rather than by whether the pid exists: pids are
+/// recycled, ports are what actually matter, and a descriptor naming a port we
+/// just bound ourselves is stale by definition.
+async fn prune_stale(dir: &std::path::Path, our_port: u16) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let Ok(body) = std::fs::read(&path) else { continue };
+        let Ok(session) = serde_json::from_slice::<SessionFile>(&body) else {
+            // Unreadable descriptors are junk too.
+            let _ = std::fs::remove_file(&path);
+            continue;
+        };
+
+        if session.identity.pid == std::process::id() {
+            continue;
+        }
+
+        let dead = session.port == our_port || !port_answers(session.port).await;
+        if dead {
+            debug!(port = session.port, pid = session.identity.pid, "pruning stale descriptor");
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// Whether anything accepts a connection on this loopback port.
+async fn port_answers(port: u16) -> bool {
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+    matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await,
+        Ok(Ok(_))
+    )
+}
+
 fn write_session_file(
     identity: &Identity,
     port: u16,
-    override_dir: Option<&std::path::Path>,
+    dir: &std::path::Path,
 ) -> std::io::Result<PathBuf> {
-    let dir = match override_dir {
-        Some(d) => d.to_path_buf(),
-        None => hostlink_home()
-            .ok_or_else(|| std::io::Error::other("no home directory"))?
-            .join(&identity.host)
-            .join("sessions"),
-    };
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(dir)?;
 
     // Keyed by pid *and* port: one process may run several servers, and a
     // pid-only name would have them overwrite and then delete each other's
@@ -379,11 +450,39 @@ mod tests {
         assert!(PORT_RANGE.contains(&server.port));
 
         let body = reqwest_get(&format!("http://127.0.0.1:{}/hello", server.port)).await;
-        let identity: Identity = serde_json::from_str(&body).expect("identity json");
-        assert_eq!(identity.host, "figma");
-        assert_eq!(identity.label, "test");
-        assert_eq!(identity.v, VERSION);
-        assert_eq!(identity.pid, std::process::id());
+        let hello: Hello = serde_json::from_str(&body).expect("hello json");
+        assert_eq!(hello.identity.host, "figma");
+        assert_eq!(hello.identity.label, "test");
+        assert_eq!(hello.identity.v, VERSION);
+        assert_eq!(hello.identity.pid, std::process::id());
+        assert!(!hello.connected, "no host has attached yet");
+    }
+
+    /// A descriptor left behind by a killed process must not outlive it.
+    #[tokio::test]
+    async fn stale_descriptors_are_pruned_on_start() {
+        let tmp = std::env::temp_dir().join(format!("hostlink-prune-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // A server that died on a port nothing listens on any more. The pid
+        // must not be ours: a descriptor bearing the running process's pid is
+        // deliberately left alone.
+        let mut identity = Identity::new("figma", "ghost");
+        identity.pid = u32::MAX;
+        // Port 5 is outside the range, so nothing can be listening on it.
+        let ghost = SessionFile { identity, port: 5 };
+        let ghost_path = tmp.join("999999-5.json");
+        std::fs::write(&ghost_path, serde_json::to_vec(&ghost).unwrap()).unwrap();
+        std::fs::write(tmp.join("garbage.json"), b"not json").unwrap();
+
+        let server = Server::start(test_config("live", &tmp)).await.expect("start");
+
+        assert!(!ghost_path.exists(), "descriptor for a dead port should be gone");
+        assert!(!tmp.join("garbage.json").exists(), "unreadable descriptor should be gone");
+
+        let remaining: Vec<_> = std::fs::read_dir(&tmp).unwrap().filter_map(|e| e.ok()).collect();
+        assert_eq!(remaining.len(), 1, "only the live server's own descriptor should survive");
+        drop(server);
     }
 
     /// Two servers must not contend: the second takes the next free slot.
