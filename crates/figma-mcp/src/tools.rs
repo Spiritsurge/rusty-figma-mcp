@@ -8,8 +8,10 @@
 //! has to be lifted out of the envelope to become an MCP image block. See
 //! [`Render`].
 
+use std::path::PathBuf;
 use std::time::Duration;
 
+use base64::Engine;
 use hostlink::{ErrorObject, Link, codes};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -29,12 +31,32 @@ const DOCUMENT_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(Clone)]
 pub struct FigmaServer {
     link: Link,
+    render_dir: PathBuf,
     tool_router: ToolRouter<Self>,
 }
 
 impl FigmaServer {
-    pub fn new(link: Link) -> Self {
-        Self { link, tool_router: Self::tool_router() }
+    pub fn new(link: Link, render_dir: PathBuf) -> Self {
+        Self { link, render_dir, tool_router: Self::tool_router() }
+    }
+
+    /// Write a render to disk and return its path.
+    ///
+    /// A model can look at an image block but cannot open it, edit it, or hand
+    /// it to another tool. Saving the file as well means a render can actually
+    /// be used — composited, cropped, attached — instead of only viewed.
+    fn save_render(&self, render: &Render) -> std::io::Result<PathBuf> {
+        std::fs::create_dir_all(&self.render_dir)?;
+
+        // Node ids contain a colon, which is not a legal Windows filename.
+        let stem = render.node_id.replace(':', "-");
+        let path = self.render_dir.join(format!("{stem}@{}x.{}", render.scale, render.format));
+
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&render.base64)
+            .map_err(std::io::Error::other)?;
+        std::fs::write(&path, bytes)?;
+        Ok(path)
     }
 
     /// Call a host method and return its result verbatim.
@@ -255,14 +277,28 @@ impl FigmaServer {
 
         debug!(node = %render.node_id, bytes = render.base64.len(), "rendered");
 
+        let saved = self
+            .save_render(&render)
+            .inspect_err(|e| debug!(error = %e, "render not saved"))
+            .ok();
+
+        let caption = match &saved {
+            Some(path) => format!(
+                "{} ({}) rendered at {}x — saved to {}",
+                render.name,
+                render.node_id,
+                render.scale,
+                path.display()
+            ),
+            None => format!("{} ({}) rendered at {}x", render.name, render.node_id, render.scale),
+        };
+
         // The image block first: clients render it, and a vision model can
-        // actually see it. The caption carries what the image cannot say.
+        // actually see it. The caption carries what the image cannot say,
+        // including where the file landed.
         Ok(CallToolResult::success(vec![
             ContentBlock::image(render.base64, format!("image/{}", render.format)),
-            ContentBlock::text(format!(
-                "{} ({}) rendered at {}x",
-                render.name, render.node_id, render.scale
-            )),
+            ContentBlock::text(caption),
         ]))
     }
 }
@@ -338,6 +374,56 @@ mod tests {
     fn timeout_message_suggests_narrowing() {
         let msg = explain("figma/getDocument", &ErrorObject::deadline_exceeded("x", 60));
         assert!(msg.to_lowercase().contains("narrower"), "{msg}");
+    }
+
+    /// A one-pixel PNG, base64 encoded, so the test exercises a real decode.
+    const PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn a_render_is_written_where_the_caption_says() {
+        let dir = std::env::temp_dir().join(format!("figma-mcp-render-test-{}", std::process::id()));
+        let server = FigmaServer::new(Link::new(), dir.clone());
+
+        let render = Render {
+            node_id: "90:30".into(),
+            name: "Banner".into(),
+            format: "png".into(),
+            scale: 2.0,
+            base64: PIXEL.into(),
+        };
+
+        let path = server.save_render(&render).expect("saved");
+
+        // A colon is legal in a Figma node id and illegal in a Windows
+        // filename, so it has to be replaced rather than passed through.
+        assert!(!path.file_name().unwrap().to_string_lossy().contains(':'));
+        assert!(path.to_string_lossy().contains("90-30"));
+
+        let written = std::fs::read(&path).expect("readable");
+        assert_eq!(
+            &written[..8],
+            &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+            "should be a real PNG"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_malformed_render_does_not_write_a_file() {
+        let dir = std::env::temp_dir().join(format!("figma-mcp-bad-render-{}", std::process::id()));
+        let server = FigmaServer::new(Link::new(), dir.clone());
+
+        let render = Render {
+            node_id: "1:1".into(),
+            name: "Bad".into(),
+            format: "png".into(),
+            scale: 1.0,
+            base64: "not valid base64 !!!".into(),
+        };
+
+        assert!(server.save_render(&render).is_err());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

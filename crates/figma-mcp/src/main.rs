@@ -6,7 +6,7 @@
 mod tools;
 
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use hostlink::server::{Config, Identity, Server};
@@ -29,6 +29,11 @@ struct Args {
     /// directory's name, which is usually the project you are working on.
     #[arg(long)]
     label: Option<String>,
+
+    /// Where get_screenshot writes its PNGs. Defaults to
+    /// <temp>/figma-mcp-renders.
+    #[arg(long)]
+    render_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -65,7 +70,12 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let service = FigmaServer::new(server.link.clone()).serve(stdio()).await?;
+    let render_dir = args
+        .render_dir
+        .unwrap_or_else(|| std::env::temp_dir().join("figma-mcp-renders"));
+    info!(dir = %render_dir.display(), "renders will be saved here");
+
+    let service = FigmaServer::new(server.link.clone(), render_dir).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }
