@@ -28,6 +28,7 @@ const LABELS: Record<string, string> = {
   "figma/createImage": "Placing an image",
   "figma/cloneNode": "Duplicating a layer",
   "figma/deleteNodes": "Deleting layers",
+  "figma/setText": "Changing text",
 };
 
 /** A short, human phrase for one request. */

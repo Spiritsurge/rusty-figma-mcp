@@ -228,6 +228,14 @@ pub struct CloneNodeArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetTextArgs {
+    /// The TEXT node to change.
+    pub node_id: String,
+    /// The new contents. May be empty.
+    pub characters: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DeleteNodesArgs {
     /// Ids to remove.
     pub node_ids: Vec<String>,
@@ -390,6 +398,18 @@ impl FigmaServer {
     }
 
     #[tool(
+        description = "Replace the contents of a text node, keeping its font, \
+                       size, colour and effects. Returns the previous text and \
+                       the node's new size. This modifies the document."
+    )]
+    async fn set_text(
+        &self,
+        Parameters(args): Parameters<SetTextArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/setText", &args, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(
         description = "Delete nodes by id. Ids that no longer exist are \
                        reported rather than failing the call. This modifies \
                        the document."
@@ -490,10 +510,10 @@ mod tests {
         ] {
             assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
         }
-        for expected in ["create_image", "clone_node", "delete_nodes"] {
+        for expected in ["create_image", "clone_node", "delete_nodes", "set_text"] {
             assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
         }
-        assert_eq!(names.len(), 11, "eight reads plus three writes: {names:?}");
+        assert_eq!(names.len(), 12, "eight reads plus four writes: {names:?}");
     }
 
     #[test]

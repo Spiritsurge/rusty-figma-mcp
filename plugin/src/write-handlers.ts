@@ -168,6 +168,62 @@ async function deleteNodes(params: Record<string, unknown>): Promise<unknown> {
   return { removed, missing };
 }
 
+/**
+ * Replace the contents of a text node.
+ *
+ * Figma refuses to mutate text whose font is not loaded, and a node with mixed
+ * formatting carries several. Every font in the existing run is loaded first,
+ * which is also what preserves that formatting: assigning `characters` keeps
+ * the styling of the first run rather than resetting to a default.
+ */
+async function setText(params: Record<string, unknown>): Promise<unknown> {
+  const nodeId = requireString(params, "node_id");
+  const characters = params.characters;
+  if (typeof characters !== "string") {
+    throw new Invalid("characters is required and must be a string");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Missing(`no node with id ${nodeId} in this file`);
+  if (node.type !== "TEXT") {
+    throw new Invalid(`${node.type} is not a text node; set_text needs a TEXT node`);
+  }
+
+  const text = node as TextNode;
+
+  const fonts: FontName[] = [];
+  if (text.characters.length > 0) {
+    fonts.push(...text.getRangeAllFontNames(0, text.characters.length));
+  } else if (text.fontName !== figma.mixed) {
+    // An empty node has no range to inspect, but still has one font to load.
+    fonts.push(text.fontName);
+  }
+
+  try {
+    await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+  } catch (error) {
+    const names = fonts.map((f) => `${f.family} ${f.style}`).join(", ");
+    throw new Error(
+      `could not load the fonts this text uses (${names}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const before = text.characters;
+  text.characters = characters;
+
+  return {
+    id: text.id,
+    name: text.name,
+    before,
+    after: text.characters,
+    width: text.width,
+    height: text.height,
+    autoResize: text.textAutoResize,
+  };
+}
+
 export const writeHandlers: Record<
   string,
   (params: Record<string, unknown>) => Promise<unknown>
@@ -175,4 +231,5 @@ export const writeHandlers: Record<
   "figma/createImage": createImage,
   "figma/cloneNode": cloneNode,
   "figma/deleteNodes": deleteNodes,
+  "figma/setText": setText,
 };
