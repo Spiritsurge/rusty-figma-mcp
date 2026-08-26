@@ -234,8 +234,15 @@ carries no naming invention of its own.
 
 `$/…` is reserved for protocol-level notifications (`$/progress` today).
 
-Tier A implements: `getDocument`, `getNode`, `getSelection`, `getStyles`,
-`getMetadata`, `getPages`, `getVariableDefs`, `getScreenshot`.
+Reads: `getDocument`, `getNode`, `getSelection`, `getStyles`, `getMetadata`,
+`getPages`, `getVariableDefs`, `getScreenshot`.
+
+Writes: `cloneNode`, `deleteNodes`, `setText`, `createImage`.
+
+A method that changes the document carries no marker in its name — the split is
+a property of the binding, not the transport. HLP itself has no opinion about
+which methods mutate; a host that exposes only reads is as valid as one that
+does not.
 
 ## 9. Versioning
 

@@ -3,8 +3,8 @@
 Read the Figma file you have open from Cursor, Claude Code, or any MCP client.
 One 3 MB binary, no API token, no REST quotas.
 
-> **Status:** eight read tools, working end to end against real documents.
-> Write tools are not implemented.
+> **Status:** eight read tools and four write tools, working end to end
+> against real documents.
 
 ## Why this exists
 
@@ -13,7 +13,7 @@ makes agent-driven design work unusable on a free account and awkward on a paid
 one.
 
 This talks to a **plugin running in your own Figma session** instead, so there
-is no token and no quota. It reads the file you already have open.
+is no token and no quota. It reads — and edits — the file you already have open.
 
 Three things make it different from other tools in this space:
 
@@ -98,6 +98,18 @@ green and your MCP client can read the document.
 | `get_variable_defs` | Variable collections and per-mode values — design tokens. |
 | `get_screenshot` | A node or page rendered as an image the model can see. |
 
+### Writing
+
+Every one of these changes the document. Figma's own undo works normally, and
+the plugin panel names each operation as it happens.
+
+| Tool | What it does |
+|---|---|
+| `clone_node` | Duplicate a node with children, styles and effects intact. |
+| `delete_nodes` | Remove nodes by id. Missing ids are reported, not fatal. |
+| `set_text` | Replace a text node's contents, keeping its formatting. |
+| `create_image` | Place a PNG, JPEG or GIF from disk as a new layer. |
+
 ### What the output looks like
 
 Colours come back as CSS hex, and anything sitting at its Figma default is
@@ -121,6 +133,25 @@ megabytes in full.
 `get_screenshot` returns an MCP image block, so the model sees the design rather
 than a wall of base64.
 
+## Making a variant
+
+The useful pattern is **clone, then subtract** — not read, then rebuild:
+
+```
+clone_node("90:30", x=2472, y=255)   → an exact copy, new ids
+delete_nodes([...])                   → strip what the variant does not need
+set_text("2007:63", "trial bonus")    → retext what is left
+```
+
+Rebuilding from a read means re-deriving every gradient transform, drop shadow
+and image hash, and silently losing anything the serializer did not capture. A
+clone is exact by construction, so deleting a few layers afterwards is the whole
+job.
+
+`set_text` returns each node's `autoResize`, which is what to watch when
+localising: a node set to `NONE` keeps its width and will overflow on a longer
+translation, while `WIDTH_AND_HEIGHT` grows to fit.
+
 ## Watching it work
 
 The plugin panel is the only place you can see an agent touching your file, so
@@ -128,13 +159,16 @@ it shows the operations rather than a count:
 
 ```
 ●  Reading your selection                    40%
-○  Checking the file                        180ms
+○  Changing text                            210ms
+○  Duplicating a layer                       1.1s
 ○  Rendering 127:7                           1.4s
-○  Reading design tokens                    620ms
 ```
 
 Running rows carry live progress; finished ones recede and show how long they
 took. Failures show in red with the plugin's own message.
+
+This matters more for writes than reads. An agent changing a file you cannot
+watch is an uncomfortable place to be, so every write appears here by name.
 
 ## Security
 
@@ -150,7 +184,7 @@ token, printed at startup, and warns loudly. Don't use it unless you mean it.
 ## Development
 
 ```sh
-cargo test                    # 42 tests: protocol, correlation, real sockets
+cargo test                    # 44 tests: protocol, correlation, real sockets
 cargo clippy --workspace --all-targets
 npm install && npm run smoke  # full path, stub host in place of Figma
 cd plugin && npm run typecheck
