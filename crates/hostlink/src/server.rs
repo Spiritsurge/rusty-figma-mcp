@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::extract::{Query, State, WebSocketUpgrade, ws};
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
@@ -237,11 +237,22 @@ async fn bind_in_range(addr: IpAddr) -> Result<(Vec<TcpListener>, u16), ServeErr
 
 /// Unauthenticated identity probe. The host UI scans the range and lists what
 /// answers (§4).
+///
+/// The response is CORS-open. It has to be: the probe comes from a plugin
+/// iframe served from a `data:` URL, so its origin is `null` and every request
+/// it makes is cross-origin. Without `Access-Control-Allow-Origin` the browser
+/// blocks the *response* even though the request succeeded, and discovery
+/// silently finds nothing.
+///
+/// Opening it costs nothing. The endpoint is unauthenticated by design and
+/// returns only what a port scan would reveal anyway; the WebSocket upgrade,
+/// which is not subject to CORS, is where access is actually decided.
 async fn hello(State(state): State<AppState>) -> impl IntoResponse {
-    axum::Json(Hello {
+    let body = axum::Json(Hello {
         identity: state.identity,
         connected: state.link.is_connected().await,
-    })
+    });
+    ([(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))], body)
 }
 
 async fn upgrade(

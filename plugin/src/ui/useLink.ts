@@ -57,7 +57,6 @@ export function useLink(session: Session | null) {
       socket.onopen = () => {
         if (cancelled) return;
         setState("connected");
-        parent.postMessage({ pluginMessage: { kind: "ui-ready" } }, "*");
       };
 
       socket.onmessage = (event) => {

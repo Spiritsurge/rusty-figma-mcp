@@ -15,6 +15,12 @@ export default function App() {
   const { state, inFlight } = useLink(selected);
   const [status, setStatus] = useState<Status | null>(null);
 
+  // Announce on mount rather than on socket open: the panel shows which file
+  // it is attached to whether or not a server was ever found.
+  useEffect(() => {
+    parent.postMessage({ pluginMessage: { kind: "ui-ready" } }, "*");
+  }, []);
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const message = event.data?.pluginMessage;
