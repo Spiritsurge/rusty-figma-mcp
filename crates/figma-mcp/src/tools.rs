@@ -122,6 +122,16 @@ struct Render {
     base64: String,
 }
 
+/// Whether these bytes are a format Figma accepts as an image fill.
+///
+/// Checked by magic number rather than by file extension: a mislabelled file
+/// would otherwise fail inside the plugin, where the error is far less clear.
+fn is_supported_image(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x89, b'P', b'N', b'G'])   // PNG
+        || bytes.starts_with(&[0xFF, 0xD8])         // JPEG
+        || bytes.starts_with(b"GIF8") // GIF
+}
+
 /// Turn a protocol error into something an agent can act on.
 ///
 /// These reach the model, not a log file, so each one says what to do next
@@ -168,6 +178,36 @@ pub struct NodeArgs {
 
 #[derive(Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct Empty {}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateImageArgs {
+    /// Absolute path to a PNG or JPEG on this machine.
+    pub path: String,
+    /// Position on the current page, in Figma canvas coordinates.
+    pub x: f64,
+    pub y: f64,
+    /// Displayed size. Defaults to the image's own pixel dimensions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    /// Layer name. Defaults to the file's own name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// What actually goes over the link: the file, read and encoded.
+#[derive(Debug, Serialize)]
+struct CreateImageWire {
+    base64: String,
+    x: f64,
+    y: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<f64>,
+    name: String,
+}
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ScreenshotArgs {
@@ -262,6 +302,56 @@ impl FigmaServer {
     }
 
     #[tool(
+        description = "Place an image file from this machine onto the current \
+                       Figma page as a new layer. This modifies the document."
+    )]
+    async fn create_image(
+        &self,
+        Parameters(args): Parameters<CreateImageArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let path = std::path::Path::new(&args.path);
+
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Cannot read {}: {e}. The path must be absolute and on the \
+                     machine running this server.",
+                    args.path
+                ))]));
+            }
+        };
+
+        // Figma accepts PNG, JPEG and GIF as image fills. Refusing here gives a
+        // better message than the plugin failing on bytes it cannot decode.
+        if !is_supported_image(&bytes) {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "{} is not a PNG, JPEG or GIF. Figma image fills accept only \
+                 those formats.",
+                args.path
+            ))]));
+        }
+
+        let name = args.name.unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Image".into())
+        });
+
+        let wire = CreateImageWire {
+            base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+            x: args.x,
+            y: args.y,
+            width: args.width,
+            height: args.height,
+            name,
+        };
+
+        debug!(path = %args.path, bytes = bytes.len(), "placing image");
+        self.call("figma/createImage", &wire, DOCUMENT_TIMEOUT).await
+    }
+
+    #[tool(
         description = "Render a node or the current page to a base64 PNG. Use \
                        when the visual result matters more than the structure."
     )]
@@ -350,7 +440,8 @@ mod tests {
         ] {
             assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
         }
-        assert_eq!(names.len(), 8, "Tier A is eight verbs: {names:?}");
+        assert!(names.contains(&"create_image".to_string()), "missing create_image: {names:?}");
+        assert_eq!(names.len(), 9, "eight reads plus create_image: {names:?}");
     }
 
     #[test]

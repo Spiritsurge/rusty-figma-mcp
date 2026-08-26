@@ -4,6 +4,7 @@
 // Nothing here touches the socket — this file only knows about Figma.
 
 import { serializeNode, serializeStyles, serializeVariables } from "./serialize";
+import { writeHandlers } from "./write-handlers";
 
 export type Emit = (pct: number, note?: string) => void;
 
@@ -107,29 +108,12 @@ async function getScreenshot(params: Record<string, unknown>): Promise<unknown> 
     name: target.name,
     format: "png",
     scale,
-    base64: encodeBase64(bytes),
+    base64: figma.base64Encode(bytes),
   };
 }
 
-/** The plugin sandbox has no btoa and no Buffer, so base64 is done by hand. */
-function encodeBase64(bytes: Uint8Array): string {
-  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i];
-    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
-    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    const triple = (a << 16) | (b << 8) | c;
-
-    out += ALPHABET[(triple >> 18) & 63];
-    out += ALPHABET[(triple >> 12) & 63];
-    out += i + 1 < bytes.length ? ALPHABET[(triple >> 6) & 63] : "=";
-    out += i + 2 < bytes.length ? ALPHABET[triple & 63] : "=";
-  }
-  return out;
-}
-
 export const handlers: Record<string, Handler> = {
+  ...writeHandlers,
   "figma/getMetadata": getMetadata,
   "figma/getPages": getPages,
   "figma/getSelection": getSelection,

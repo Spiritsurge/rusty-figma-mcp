@@ -25,6 +25,7 @@ const LABELS: Record<string, string> = {
   "figma/getDocument": "Reading the document",
   "figma/getStyles": "Reading styles",
   "figma/getVariableDefs": "Reading design tokens",
+  "figma/createImage": "Placing an image",
 };
 
 /** A short, human phrase for one request. */
