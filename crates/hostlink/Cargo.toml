@@ -1,0 +1,21 @@
+[package]
+name = "hostlink"
+description = "Host Link Protocol — transport for driving a sandboxed host application from an external process"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dashmap.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+getrandom = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1.53", features = ["full", "test-util"] }
