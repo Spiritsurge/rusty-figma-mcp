@@ -209,6 +209,30 @@ struct CreateImageWire {
     name: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CloneNodeArgs {
+    /// Node to duplicate, e.g. "90:30".
+    pub node_id: String,
+    /// Where to put the copy. Omit either to leave it on top of the original.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    /// Layer name for the copy. Defaults to Figma's own "name (Copy)".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Levels of the copy's subtree to return. Defaults to 2, which is enough
+    /// to address the copy's direct children.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DeleteNodesArgs {
+    /// Ids to remove.
+    pub node_ids: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ScreenshotArgs {
     /// Node to render. Omit to render the current page.
@@ -352,6 +376,32 @@ impl FigmaServer {
     }
 
     #[tool(
+        description = "Duplicate a node with all its children, styles and \
+                       effects intact, optionally at a new position. Returns \
+                       the copy's subtree — the copies have new ids. Use this \
+                       rather than rebuilding a design from its parts. This \
+                       modifies the document."
+    )]
+    async fn clone_node(
+        &self,
+        Parameters(args): Parameters<CloneNodeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/cloneNode", &args, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(
+        description = "Delete nodes by id. Ids that no longer exist are \
+                       reported rather than failing the call. This modifies \
+                       the document."
+    )]
+    async fn delete_nodes(
+        &self,
+        Parameters(args): Parameters<DeleteNodesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/deleteNodes", &args, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(
         description = "Render a node or the current page to a base64 PNG. Use \
                        when the visual result matters more than the structure."
     )]
@@ -440,8 +490,10 @@ mod tests {
         ] {
             assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
         }
-        assert!(names.contains(&"create_image".to_string()), "missing create_image: {names:?}");
-        assert_eq!(names.len(), 9, "eight reads plus create_image: {names:?}");
+        for expected in ["create_image", "clone_node", "delete_nodes"] {
+            assert!(names.contains(&expected.to_string()), "{expected} missing from {names:?}");
+        }
+        assert_eq!(names.len(), 11, "eight reads plus three writes: {names:?}");
     }
 
     #[test]

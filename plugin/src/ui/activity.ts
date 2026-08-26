@@ -26,6 +26,8 @@ const LABELS: Record<string, string> = {
   "figma/getStyles": "Reading styles",
   "figma/getVariableDefs": "Reading design tokens",
   "figma/createImage": "Placing an image",
+  "figma/cloneNode": "Duplicating a layer",
+  "figma/deleteNodes": "Deleting layers",
 };
 
 /** A short, human phrase for one request. */
