@@ -1,9 +1,19 @@
 [package]
 name = "figma-mcp"
+description = "MCP server that reads the open Figma document through a plugin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 hostlink = { path = "../hostlink" }
+rmcp = { version = "3.1.4", features = ["server", "transport-io", "macros"] }
 tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+schemars = "1"
+anyhow = "1"
