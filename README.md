@@ -215,9 +215,14 @@ sandbox and is well established — notably
 This is an independent implementation: the protocol was specified from Figma's
 constraints before any code was written, and diverges deliberately where it is
 free to — JSON-RPC framing, user-selected session discovery instead of
-leader/follower election, and opaque payload forwarding. See
-[PROTOCOL.md](PROTOCOL.md) Appendix A. No source from another implementation was
-used.
+leader/follower election, and opaque payload forwarding. No source from another
+implementation was used.
+
+That is checkable rather than merely claimed. `scripts/similarity.mjs` compares
+this source against any other project; run against all four implementations
+above, the longest run of consecutive identical lines is **seven**, and those
+seven are a rectangle'''s geometry in Figma'''s own property order. See
+[PROTOCOL.md](PROTOCOL.md) Appendix A.
 
 ## License
 

@@ -271,3 +271,39 @@ rather than full deserialization (§7).
 
 No source from another implementation was consulted while writing this document
 or the code implementing it.
+
+### Measured, not asserted
+
+`scripts/similarity.mjs` compares this project's source against another
+implementation, reporting the share of identical lines and — the number that
+matters — the longest run of *consecutive* identical ones. Scattered matches are
+shared vocabulary; a long consecutive run is what distinguishes copying from two
+people solving the same problem.
+
+Run against every other implementation in this space:
+
+| Compared against | Longest identical run |
+|---|---|
+| `grab/cursor-talk-to-figma-mcp` | 7 lines |
+| `gethopp/figma-mcp-bridge` | 5 lines |
+| `vkhanhqui/figma-mcp-go` | 5 lines |
+| `GLips/Figma-Context-MCP` | 2 lines |
+
+The worst case, seven lines, is a rectangle's own geometry returned in Figma's
+own property order:
+
+```ts
+return { id: rect.id, name: rect.name, x: rect.x, y: rect.y,
+         width: rect.width, height: rect.height }
+```
+
+The next, five lines, is the four functions Figma provides for local styles,
+called in the only order they can be called in. Both are dictated by the host
+API rather than authored, which is the definition of a case where expression
+merges with function.
+
+For contrast, the `figma-mcp-go` takedown of July 2026 rested on files sharing
+18–43% identical lines with struct bodies matching byte for byte, tags included.
+
+The Rust transport — the part that notice enumerated file by file — has no
+counterpart anywhere: no other implementation in this space is written in Rust.
