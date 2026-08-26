@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { type Activity, formatDuration } from "./activity";
 import { useLink } from "./useLink";
 import { type Session, useSessions } from "./useSessions";
 
@@ -12,7 +13,7 @@ interface Status {
 export default function App() {
   const { sessions, scanning, rescan } = useSessions();
   const [selected, setSelected] = useState<Session | null>(null);
-  const { state, inFlight } = useLink(selected);
+  const { state, active, history } = useLink(selected);
   const [status, setStatus] = useState<Status | null>(null);
 
   // Announce on mount rather than on socket open: the panel shows which file
@@ -59,7 +60,8 @@ export default function App() {
         <Connected
           session={selected}
           state={state}
-          inFlight={inFlight}
+          active={active}
+          history={history}
           onDisconnect={() => setSelected(null)}
         />
       ) : (
@@ -137,21 +139,25 @@ function Picker({
 function Connected({
   session,
   state,
-  inFlight,
+  active,
+  history,
   onDisconnect,
 }: {
   session: Session;
   state: string;
-  inFlight: number;
+  active: Activity[];
+  history: Activity[];
   onDisconnect: () => void;
 }) {
+  const idle = state === "connected" && active.length === 0;
+
   return (
     <div className="connected">
       <div className={`badge ${state}`}>
         <span className="dot" />
         {state === "connected"
-          ? inFlight > 0
-            ? `working — ${inFlight} request${inFlight > 1 ? "s" : ""}`
+          ? active.length > 0
+            ? `working — ${active.length} request${active.length > 1 ? "s" : ""}`
             : "connected"
           : state === "connecting"
             ? "connecting…"
@@ -165,9 +171,41 @@ function Connected({
         <div className="port">localhost:{session.port}</div>
       </div>
 
+      <div className="activity">
+        {active.map((item) => (
+          <ActivityRow key={item.id} item={item} running />
+        ))}
+        {history.map((item) => (
+          <ActivityRow key={item.id} item={item} />
+        ))}
+        {idle && history.length === 0 && (
+          <p className="hint idle">Waiting for the assistant…</p>
+        )}
+      </div>
+
       <button className="disconnect" onClick={onDisconnect}>
         {state === "ended" ? "Back to sessions" : "Disconnect"}
       </button>
+    </div>
+  );
+}
+
+function ActivityRow({ item, running = false }: { item: Activity; running?: boolean }) {
+  return (
+    <div className={`activity-row ${running ? "running" : item.outcome}`}>
+      <span className="marker" />
+      <span className="what" title={item.note ?? item.method}>
+        {item.label}
+      </span>
+      <span className="when">
+        {running
+          ? item.pct !== undefined
+            ? `${item.pct}%`
+            : "…"
+          : item.ms !== undefined
+            ? formatDuration(item.ms)
+            : ""}
+      </span>
     </div>
   );
 }

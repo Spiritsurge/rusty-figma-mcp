@@ -221,3 +221,76 @@ footer .author {
 .badge.ended {
   color: var(--figma-color-text-secondary, #8c8c8c);
 }
+
+/* Activity log — the only place a user can watch an agent touch their file,
+   so running work stays visually distinct from what has already finished. */
+.activity {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.activity-row.running {
+  background: var(--figma-color-bg-secondary, #f5f5f5);
+}
+
+.activity-row .marker {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--figma-color-icon-tertiary, #b3b3b3);
+}
+
+.activity-row.running .marker {
+  background: var(--figma-color-icon-brand, #0d99ff);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.activity-row.error .marker {
+  background: var(--figma-color-icon-danger, #f24822);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.activity-row .what {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Finished rows recede so the eye lands on what is happening now. */
+.activity-row:not(.running) .what {
+  color: var(--figma-color-text-secondary, #8c8c8c);
+}
+
+.activity-row.error .what {
+  color: var(--figma-color-text-danger, #f24822);
+}
+
+.activity-row .when {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--figma-color-text-tertiary, #b3b3b3);
+}
+
+.idle {
+  margin: auto;
+  text-align: center;
+}

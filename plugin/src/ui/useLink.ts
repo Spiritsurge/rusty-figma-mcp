@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PROTOCOL_VERSION } from "../protocol";
+import { type Activity, describe } from "./activity";
 import type { Session } from "./useSessions";
+
+/** How many finished operations to keep on screen. */
+const HISTORY_LIMIT = 6;
 
 export type LinkState = "idle" | "connecting" | "connected" | "lost" | "ended";
 
@@ -35,7 +39,8 @@ async function isSameServer(session: Session): Promise<boolean> {
  */
 export function useLink(session: Session | null) {
   const [state, setState] = useState<LinkState>("idle");
-  const [inFlight, setInFlight] = useState(0);
+  const [active, setActive] = useState<Activity[]>([]);
+  const [history, setHistory] = useState<Activity[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | null>(null);
 
@@ -53,7 +58,7 @@ export function useLink(session: Session | null) {
       socketRef.current = null;
     }
     setState("idle");
-    setInFlight(0);
+    setActive([]);
   }, []);
 
   useEffect(() => {
@@ -91,7 +96,17 @@ export function useLink(session: Session | null) {
       socket.onmessage = (event) => {
         try {
           const frame = JSON.parse(event.data as string);
-          setInFlight((n) => n + 1);
+          if (typeof frame.id === "number" && typeof frame.method === "string") {
+            setActive((current) => [
+              ...current,
+              {
+                id: frame.id,
+                method: frame.method,
+                label: describe(frame.method, frame.params),
+                startedAt: Date.now(),
+              },
+            ]);
+          }
           parent.postMessage({ pluginMessage: { kind: "request", frame } }, "*");
         } catch {
           // A frame we cannot parse is the server's problem, not ours; dropping
@@ -103,7 +118,7 @@ export function useLink(session: Session | null) {
         if (cancelled || socketRef.current !== socket) return;
         socketRef.current = null;
         setState("lost");
-        setInFlight(0);
+        setActive([]);
         reconnectRef.current = window.setTimeout(() => void connect(), RECONNECT_DELAY_MS);
       };
 
@@ -131,15 +146,41 @@ export function useLink(session: Session | null) {
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message.frame));
       }
-      // Progress notifications are not terminal, so they must not decrement.
-      if (message.frame?.method !== "$/progress") {
-        setInFlight((n) => Math.max(0, n - 1));
+      const frame = message.frame;
+
+      // Progress is not terminal: it updates the row rather than closing it.
+      if (frame?.method === "$/progress") {
+        const { id, pct, note } = frame.params ?? {};
+        setActive((current) =>
+          current.map((a) => (a.id === id ? { ...a, pct, note } : a)),
+        );
+        return;
       }
+
+      if (typeof frame?.id !== "number") return;
+
+      setActive((current) => {
+        const finished = current.find((a) => a.id === frame.id);
+        if (finished) {
+          setHistory((past) =>
+            [
+              {
+                ...finished,
+                outcome: frame.error ? ("error" as const) : ("ok" as const),
+                ms: Date.now() - finished.startedAt,
+                note: frame.error?.message,
+              },
+              ...past,
+            ].slice(0, HISTORY_LIMIT),
+          );
+        }
+        return current.filter((a) => a.id !== frame.id);
+      });
     };
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  return { state, inFlight };
+  return { state, active, history };
 }
