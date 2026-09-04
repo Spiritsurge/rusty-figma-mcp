@@ -1,4 +1,4 @@
-//! Request correlation over a single host connection. See `PROTOCOL.md` §6, §7.
+//! Request correlation over a single host connection.
 //!
 //! One [`Link`] fronts at most one connected host (§5). Requests are matched to
 //! responses by id, deadlines are extended by `$/progress`, and payloads reach

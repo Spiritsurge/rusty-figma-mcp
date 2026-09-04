@@ -1,4 +1,4 @@
-//! Host Link Protocol — see `PROTOCOL.md`.
+//! Host Link Protocol.
 
 pub mod link;
 pub mod protocol;

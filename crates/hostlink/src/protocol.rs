@@ -1,4 +1,4 @@
-//! Wire types for the Host Link Protocol. See `PROTOCOL.md` §3.
+//! Wire types for the Host Link Protocol.
 //!
 //! The central design constraint (§7) is that a host `result` is **never
 //! deserialized** — it is captured as a raw JSON fragment and forwarded

@@ -1,5 +1,5 @@
 // Wire types for the Host Link Protocol. Mirrors crates/hostlink/src/protocol.rs.
-// See PROTOCOL.md §3 — changes land there first.
+// Changes land in the Rust definition first.
 
 export const PROTOCOL_VERSION = 1;
 

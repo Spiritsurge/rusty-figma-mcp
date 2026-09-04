@@ -49,8 +49,6 @@ Each MCP client spawns its own server, and each takes the next free port in
 which editor drives Figma** — no leader election, no port races, no guessing
 which window is connected.
 
-The wire format is specified in [PROTOCOL.md](PROTOCOL.md).
-
 ## Setup
 
 ### 1. Point your MCP client at the server
@@ -203,26 +201,6 @@ cd plugin && npm run typecheck
 work can be verified without Figma's reload loop. Note that it binds a real port
 in the discovery range — close the Figma plugin first, or a live one may attach
 to the test's server.
-
-## Prior art
-
-The plugin-relays-to-an-external-server design is imposed by Figma's plugin
-sandbox and is well established — notably
-[grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp)
-(March 2025) and
-[gethopp/figma-mcp-bridge](https://github.com/gethopp/figma-mcp-bridge).
-
-This is an independent implementation: the protocol was specified from Figma's
-constraints before any code was written, and diverges deliberately where it is
-free to — JSON-RPC framing, user-selected session discovery instead of
-leader/follower election, and opaque payload forwarding. No source from another
-implementation was used.
-
-That is checkable rather than merely claimed. `scripts/similarity.mjs` compares
-this source against any other project; run against all four implementations
-above, the longest run of consecutive identical lines is **seven**, and those
-seven are a rectangle'''s geometry in Figma'''s own property order. See
-[PROTOCOL.md](PROTOCOL.md) Appendix A.
 
 ## License
 

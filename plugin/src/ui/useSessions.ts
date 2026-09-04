@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-// PROTOCOL.md §4: the iframe has no filesystem access, so servers are found by
+// The iframe has no filesystem access, so servers are found by
 // probing the port range over the network the iframe does have.
 const PORT_RANGE = Array.from({ length: 20 }, (_, i) => 51820 + i);
 const PROBE_TIMEOUT_MS = 400;

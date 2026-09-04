@@ -17,7 +17,7 @@ const RECONNECT_DELAY_MS = 1500;
  * A port is not an identity. If the picked server dies and another takes its
  * slot, reconnecting blindly would hand the user's session to a process they
  * never selected — silently transferring the authorization gesture that
- * PROTOCOL.md §5 rests on. pid and start time together identify the process.
+ * picking a session rests on. pid and start time together identify the process.
  */
 async function isSameServer(session: Session): Promise<boolean> {
   try {

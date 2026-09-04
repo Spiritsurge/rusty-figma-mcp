@@ -66,7 +66,7 @@ async function getDocument(params: Record<string, unknown>, emit: Emit): Promise
 
   // Under dynamic-page access, pages other than the current one are not loaded
   // until asked for. This is the slow part of the call, so it reports progress:
-  // the server extends the deadline on each notification (PROTOCOL.md §6).
+  // the server extends the deadline on each notification.
   const pages = figma.root.children;
   const serialized = [];
   for (let i = 0; i < pages.length; i++) {

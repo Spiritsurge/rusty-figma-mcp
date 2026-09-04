@@ -1,6 +1,6 @@
 // Plugin main thread.
 //
-// Has the figma.* API and no network (PROTOCOL.md C1), so it does the work and
+// Has the figma.* API and no network, so it does the work and
 // the UI iframe carries the socket. Everything crosses by postMessage.
 
 import { handlers, NotFound } from "./handlers";

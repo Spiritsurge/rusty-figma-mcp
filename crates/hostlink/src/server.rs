@@ -1,5 +1,5 @@
 //! Listening side of the link: port discovery, `/hello`, and the WebSocket
-//! upgrade. See `PROTOCOL.md` §4, §5.
+//! upgrade.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
