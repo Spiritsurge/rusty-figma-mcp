@@ -1,11 +1,11 @@
+# core.autocrlf is a per-machine setting; this is not. It is what keeps the
+# repository LF no matter who clones it or how their git is configured.
 * text=auto eol=lf
-
-# Executables must keep LF regardless of platform: a shell script with CRLF
-# fails on Linux and macOS with a confusing "bad interpreter" error.
-*.sh            text eol=lf
 
 *.png binary
 *.pdf binary
 
-Cargo.lock linguist-generated
-plugin/package-lock.json linguist-generated
+# Collapsed in diffs and left out of the language stats. The pattern has no
+# slash, so it matches the plugin's lockfile too.
+Cargo.lock        linguist-generated
+package-lock.json linguist-generated
