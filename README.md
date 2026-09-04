@@ -56,7 +56,7 @@ which window is connected.
 ```json
 {
   "mcpServers": {
-    "figma": { "command": "npx", "args": ["-y", "rusty-figma-mcp"] }
+    "figma": { "command": "npx", "args": ["-y", "@spiritsurge/figma-mcp"] }
   }
 }
 ```

@@ -136,7 +136,7 @@ jobs:
       # than a delayed release.
       - name: Publish platform packages
         run: |
-          for dir in npm-dist/rusty-figma-mcp-*; do
+          for dir in npm-dist/figma-mcp-*; do
             echo "publishing $dir"
             npm publish "$dir" --access public --provenance
           done
@@ -144,7 +144,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish launcher
-        run: npm publish npm-dist/rusty-figma-mcp --access public --provenance
+        run: npm publish npm-dist/figma-mcp --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -172,7 +172,7 @@ jobs:
             ```json
             {
               "mcpServers": {
-                "figma": { "command": "npx", "args": ["-y", "rusty-figma-mcp"] }
+                "figma": { "command": "npx", "args": ["-y", "@spiritsurge/figma-mcp"] }
               }
             }
             ```

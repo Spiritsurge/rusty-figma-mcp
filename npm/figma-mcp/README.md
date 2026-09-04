@@ -1,4 +1,4 @@
-# rusty-figma-mcp
+# @spiritsurge/figma-mcp
 
 MCP server that reads and edits the Figma file you have open, through a plugin
 running in your own session. No API token, no REST quotas.
@@ -6,7 +6,7 @@ running in your own session. No API token, no REST quotas.
 ```json
 {
   "mcpServers": {
-    "figma": { "command": "npx", "args": ["-y", "rusty-figma-mcp"] }
+    "figma": { "command": "npx", "args": ["-y", "@spiritsurge/figma-mcp"] }
   }
 }
 ```

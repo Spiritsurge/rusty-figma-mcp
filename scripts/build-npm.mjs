@@ -31,6 +31,7 @@ const TARGETS = [
 ];
 
 const REPO = "https://github.com/Spiritsurge/rusty-figma-mcp";
+const SCOPE = "@spiritsurge";
 mkdirSync(outDir, { recursive: true });
 
 const built = [];
@@ -47,8 +48,10 @@ for (const target of TARGETS) {
     continue;
   }
 
-  const name = `rusty-figma-mcp-${target.pkg}`;
-  const dir = join(outDir, name);
+  // Scoped on npm, flat on disk: a directory named for the scope would
+  // nest, and the publish step globs these by prefix.
+  const name = `${SCOPE}/figma-mcp-${target.pkg}`;
+  const dir = join(outDir, `figma-mcp-${target.pkg}`);
   mkdirSync(join(dir, "bin"), { recursive: true });
   cpSync(source, join(dir, "bin", exe));
 
@@ -58,7 +61,7 @@ for (const target of TARGETS) {
       {
         name,
         version,
-        description: `Prebuilt rusty-figma-mcp binary for ${target.os} ${target.cpu}.`,
+        description: `Prebuilt figma-mcp binary for ${target.os} ${target.cpu}.`,
         // npm reads these and installs this package only on a matching
         // machine, which is what makes the optionalDependencies trick work.
         os: [target.os],
@@ -67,6 +70,10 @@ for (const target of TARGETS) {
         license: "MIT",
         repository: { type: "git", url: `git+${REPO}.git` },
         homepage: `${REPO}#readme`,
+        // Scoped packages default to restricted. One private platform package
+        // breaks installs on that platform only, which is a miserable bug to
+        // find, so it is stated here as well as on the publish command.
+        publishConfig: { access: "public" },
         preferUnplugged: true,
       },
       null,
@@ -85,14 +92,14 @@ if (built.length === 0) {
 
 // The launcher, with its optionalDependencies narrowed to what actually built
 // and every version pinned to this release.
-const launcherDir = join(outDir, "rusty-figma-mcp");
+const launcherDir = join(outDir, "figma-mcp");
 mkdirSync(join(launcherDir, "bin"), { recursive: true });
-cpSync("npm/rusty-figma-mcp/bin/cli.js", join(launcherDir, "bin", "cli.js"));
-cpSync("npm/rusty-figma-mcp/README.md", join(launcherDir, "README.md"));
+cpSync("npm/figma-mcp/bin/cli.js", join(launcherDir, "bin", "cli.js"));
+cpSync("npm/figma-mcp/README.md", join(launcherDir, "README.md"));
 
-const launcher = JSON.parse(readFileSync("npm/rusty-figma-mcp/package.json", "utf8"));
+const launcher = JSON.parse(readFileSync("npm/figma-mcp/package.json", "utf8"));
 launcher.version = version;
 launcher.optionalDependencies = Object.fromEntries(built.map((name) => [name, version]));
 writeFileSync(join(launcherDir, "package.json"), JSON.stringify(launcher, null, 2) + "\n");
 
-console.log(`  built rusty-figma-mcp@${version} → ${built.length} platform package(s)`);
+console.log(`  built ${launcher.name}@${version} → ${built.length} platform package(s)`);

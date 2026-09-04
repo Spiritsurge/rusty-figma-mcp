@@ -13,18 +13,18 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const PACKAGES = {
-  "darwin arm64": "rusty-figma-mcp-darwin-arm64",
-  "darwin x64": "rusty-figma-mcp-darwin-x64",
-  "linux arm64": "rusty-figma-mcp-linux-arm64",
-  "linux x64": "rusty-figma-mcp-linux-x64",
-  "win32 arm64": "rusty-figma-mcp-win32-arm64",
-  "win32 x64": "rusty-figma-mcp-win32-x64",
+  "darwin arm64": "@spiritsurge/figma-mcp-darwin-arm64",
+  "darwin x64": "@spiritsurge/figma-mcp-darwin-x64",
+  "linux arm64": "@spiritsurge/figma-mcp-linux-arm64",
+  "linux x64": "@spiritsurge/figma-mcp-linux-x64",
+  "win32 arm64": "@spiritsurge/figma-mcp-win32-arm64",
+  "win32 x64": "@spiritsurge/figma-mcp-win32-x64",
 };
 
 // Diagnostics go to stderr without exception: stdout carries the MCP
 // transport, and a single stray line on it corrupts the stream.
 function fail(message) {
-  process.stderr.write(`rusty-figma-mcp: ${message}\n`);
+  process.stderr.write(`figma-mcp: ${message}\n`);
   process.exit(1);
 }
 
