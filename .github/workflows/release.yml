@@ -23,13 +23,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Built on native runners wherever one exists, which avoids
-          # cross-compilation entirely. Windows arm64 has no runner here, so
-          # it is the one target cross-compiled — safe because the workspace
-          # has no C dependencies.
+          # Built on native runners wherever one exists. The two exceptions
+          # are cross-compiled, which is safe because the workspace has no C
+          # dependencies: windows arm64 has never had a runner, and intel mac
+          # lost its one when macos-13 was retired — a job asking for that
+          # label is simply never picked up, so it queues until it times out.
+          # The cost is that neither binary is executed before it ships.
           - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm }
-          - { target: x86_64-apple-darwin, runner: macos-13 }
+          - { target: x86_64-apple-darwin, runner: macos-latest, cross: true }
           - { target: aarch64-apple-darwin, runner: macos-latest }
           - { target: x86_64-pc-windows-msvc, runner: windows-latest }
           - { target: aarch64-pc-windows-msvc, runner: windows-latest, cross: true }
