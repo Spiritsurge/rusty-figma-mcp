@@ -144,15 +144,18 @@ jobs:
       # than a delayed release.
       - name: Publish platform packages
         run: |
+          # The ./ is load-bearing. npm reads a bare a/b argument as a github
+          # shorthand and goes looking for a repository of that name, so the
+          # path has to be explicitly relative.
           for dir in npm-dist/figma-mcp-*; do
             echo "publishing $dir"
-            npm publish "$dir" --access public --provenance
+            npm publish "./$dir" --access public --provenance
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish launcher
-        run: npm publish npm-dist/figma-mcp --access public --provenance
+        run: npm publish ./npm-dist/figma-mcp --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
