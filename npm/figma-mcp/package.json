@@ -1,6 +1,7 @@
 {
   "name": "@spiritsurge/figma-mcp",
-  "version": "0.1.0",
+  "mcpName": "io.github.spiritsurge/figma-mcp",
+  "version": "0.1.1",
   "description": "MCP server that reads and edits the open Figma document through a plugin. One static binary, no API token, no REST quotas.",
   "type": "module",
   "bin": {
@@ -37,11 +38,11 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@spiritsurge/figma-mcp-darwin-arm64": "0.1.0",
-    "@spiritsurge/figma-mcp-darwin-x64": "0.1.0",
-    "@spiritsurge/figma-mcp-linux-arm64": "0.1.0",
-    "@spiritsurge/figma-mcp-linux-x64": "0.1.0",
-    "@spiritsurge/figma-mcp-win32-arm64": "0.1.0",
-    "@spiritsurge/figma-mcp-win32-x64": "0.1.0"
+    "@spiritsurge/figma-mcp-darwin-arm64": "0.1.1",
+    "@spiritsurge/figma-mcp-darwin-x64": "0.1.1",
+    "@spiritsurge/figma-mcp-linux-arm64": "0.1.1",
+    "@spiritsurge/figma-mcp-linux-x64": "0.1.1",
+    "@spiritsurge/figma-mcp-win32-arm64": "0.1.1",
+    "@spiritsurge/figma-mcp-win32-x64": "0.1.1"
   }
 }
