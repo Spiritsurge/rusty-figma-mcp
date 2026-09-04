@@ -105,6 +105,12 @@ jobs:
     name: publish
     needs: [build, plugin]
     runs-on: ubuntu-latest
+    # contents to attach the archives to the GitHub release, id-token because
+    # --provenance mints an OIDC token and the publish fails outright without
+    # it. A job-level block replaces the top-level one, so both are named.
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
