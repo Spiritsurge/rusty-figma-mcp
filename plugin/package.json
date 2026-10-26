@@ -8,7 +8,8 @@
     "build:ui": "vite build --config vite.config.ui.ts",
     "build:main": "vite build --config vite.config.main.ts",
     "watch": "vite build --watch --config vite.config.main.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
     "react": "^19.2.0",

@@ -125,11 +125,11 @@ export interface SerializeOptions {
   depth?: number;
 }
 
-export function serializeNode(
+export async function serializeNode(
   node: BaseNode,
   options: SerializeOptions = {},
   currentDepth = 0,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const depth = options.depth ?? Infinity;
   const out: Record<string, unknown> = {
     id: node.id,
@@ -200,9 +200,12 @@ export function serializeNode(
   }
 
   if (node.type === "INSTANCE") {
-    // mainComponent is async under dynamic-page access; the id is enough to
-    // correlate an instance with its component without paying for the load.
-    out.componentId = (node as InstanceNode).mainComponent?.id ?? null;
+    // The synchronous mainComponent getter throws under dynamic-page access,
+    // so the component is resolved through its async twin. It is null for an
+    // instance whose component is unreachable, e.g. from an unpublished library.
+    const main = await (node as InstanceNode).getMainComponentAsync();
+    out.componentId = main?.id ?? null;
+    if (main) out.componentName = main.name;
   }
 
   // Style bindings, which are what tie a node back to the design system.
@@ -220,7 +223,9 @@ export function serializeNode(
       out.childCount = children.length;
       out.truncated = true;
     } else {
-      out.children = children.map((child) => serializeNode(child, options, currentDepth + 1));
+      out.children = await Promise.all(
+        children.map((child) => serializeNode(child, options, currentDepth + 1)),
+      );
     }
   }
 

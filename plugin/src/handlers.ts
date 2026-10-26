@@ -28,6 +28,17 @@ function optionalDepth(params: Record<string, unknown>): number | undefined {
   return value;
 }
 
+/**
+ * Under dynamic-page access a node on a page other than the current one cannot
+ * be read until that page is loaded. Without this, getNode works only for the
+ * page the user has open and otherwise hangs until they switch to it.
+ */
+async function loadOwningPage(node: BaseNode): Promise<void> {
+  let cursor: BaseNode | null = node;
+  while (cursor && cursor.type !== "PAGE") cursor = cursor.parent;
+  if (cursor) await (cursor as PageNode).loadAsync();
+}
+
 async function getMetadata(): Promise<unknown> {
   return {
     fileName: figma.root.name,
@@ -50,7 +61,7 @@ async function getSelection(params: Record<string, unknown>): Promise<unknown> {
   const selection = figma.currentPage.selection;
   return {
     count: selection.length,
-    nodes: selection.map((node) => serializeNode(node, { depth })),
+    nodes: await Promise.all(selection.map((node) => serializeNode(node, { depth }))),
   };
 }
 
@@ -58,6 +69,7 @@ async function getNode(params: Record<string, unknown>): Promise<unknown> {
   const nodeId = requireString(params, "node_id");
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) throw new NotFound(`no node with id ${nodeId} in this file`);
+  await loadOwningPage(node);
   return serializeNode(node, { depth: optionalDepth(params) });
 }
 
@@ -72,7 +84,7 @@ async function getDocument(params: Record<string, unknown>, emit: Emit): Promise
   for (let i = 0; i < pages.length; i++) {
     await pages[i].loadAsync();
     emit(Math.round(((i + 1) / pages.length) * 100), `loading ${pages[i].name}`);
-    serialized.push(serializeNode(pages[i], { depth }));
+    serialized.push(await serializeNode(pages[i], { depth }));
   }
 
   return { name: figma.root.name, pages: serialized };

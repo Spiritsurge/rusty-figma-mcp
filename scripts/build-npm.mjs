@@ -11,7 +11,7 @@
 // npm would silently install nothing and the launcher would report a missing
 // binary.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const [version, artifacts, outDir] = process.argv.slice(2);
@@ -54,6 +54,9 @@ for (const target of TARGETS) {
   const dir = join(outDir, `figma-mcp-${target.pkg}`);
   mkdirSync(join(dir, "bin"), { recursive: true });
   cpSync(source, join(dir, "bin", exe));
+  // upload-artifact does not preserve file modes, so the binary arrives here
+  // as 644. Without the execute bit npx fails with EACCES on macOS and Linux.
+  if (!windows) chmodSync(join(dir, "bin", exe), 0o755);
 
   writeFileSync(
     join(dir, "package.json"),
