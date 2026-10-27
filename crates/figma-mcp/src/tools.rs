@@ -557,11 +557,9 @@ impl FigmaServer {
         self.call("figma/deleteNodes", &args, DEFAULT_TIMEOUT).await
     }
 
-    #[tool(
-        description = "Export a node as SVG, so icons and logos stay vector. \
+    #[tool(description = "Export a node as SVG, so icons and logos stay vector. \
                        The file is saved to disk and its path returned; small \
-                       SVGs are also returned inline."
-    )]
+                       SVGs are also returned inline.")]
     async fn export_svg(
         &self,
         Parameters(args): Parameters<ExportSvgArgs>,
@@ -596,11 +594,9 @@ impl FigmaServer {
         Ok(CallToolResult::success(blocks))
     }
 
-    #[tool(
-        description = "Read the original bytes of an image fill by its hash \
+    #[tool(description = "Read the original bytes of an image fill by its hash \
                        (imageHash in get_node). The file is saved to disk and \
-                       its path returned, in the format it was uploaded in."
-    )]
+                       its path returned, in the format it was uploaded in.")]
     async fn get_image_bytes(
         &self,
         Parameters(args): Parameters<ImageBytesArgs>,
