@@ -4,6 +4,7 @@
 // Nothing here touches the socket — this file only knows about Figma.
 
 import { type Criteria, findNodes, normalizeColor } from "./find";
+import { loadOwningPage } from "./pages";
 import { serializeNode, serializeStyles, serializeVariables } from "./serialize";
 import { writeHandlers } from "./write-handlers";
 
@@ -27,17 +28,6 @@ function optionalDepth(params: Record<string, unknown>): number | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "number" || value < 0) throw new TypeError("depth must be a positive number");
   return value;
-}
-
-/**
- * Under dynamic-page access a node on a page other than the current one cannot
- * be read until that page is loaded. Without this, getNode works only for the
- * page the user has open and otherwise hangs until they switch to it.
- */
-async function loadOwningPage(node: BaseNode): Promise<void> {
-  let cursor: BaseNode | null = node;
-  while (cursor && cursor.type !== "PAGE") cursor = cursor.parent;
-  if (cursor) await (cursor as PageNode).loadAsync();
 }
 
 async function getMetadata(): Promise<unknown> {

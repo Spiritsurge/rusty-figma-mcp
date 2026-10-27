@@ -317,6 +317,11 @@ struct CreateImageWire {
 pub struct CloneNodeArgs {
     /// Node to duplicate, e.g. "90:30".
     pub node_id: String,
+    /// Page or frame to put the copy in, so it can land on another page. Omit
+    /// to keep it beside the original. Position is kept relative to the new
+    /// parent unless `x`/`y` are given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
     /// Where to put the copy. Omit either to leave it on top of the original.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub x: Option<f64>,
@@ -329,6 +334,15 @@ pub struct CloneNodeArgs {
     /// to address the copy's direct children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreatePageArgs {
+    /// Name for the new page. Refused if a page already has this name.
+    pub name: String,
+    /// Position among the pages, from 0. Defaults to the end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -525,7 +539,9 @@ impl FigmaServer {
 
     #[tool(description = "Duplicate a node with all its children, styles and \
                        effects intact, optionally at a new position. Returns \
-                       the copy's subtree — the copies have new ids. Use this \
+                       the copy's subtree and its pageId — the copies have new ids. \
+                       Pass parent_id to put the copy on another page or in \
+                       another frame; the original is untouched. Use this \
                        rather than rebuilding a design from its parts. This \
                        modifies the document.")]
     async fn clone_node(
@@ -533,6 +549,18 @@ impl FigmaServer {
         Parameters(args): Parameters<CloneNodeArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.call("figma/cloneNode", &args, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(
+        description = "Add a page to the file and return its id. Does not switch \
+                       to it. Put nodes on it with clone_node and parent_id. \
+                       This modifies the document."
+    )]
+    async fn create_page(
+        &self,
+        Parameters(args): Parameters<CreatePageArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/createPage", &args, DEFAULT_TIMEOUT).await
     }
 
     #[tool(
@@ -741,13 +769,19 @@ mod tests {
                 "{expected} missing from {names:?}"
             );
         }
-        for expected in ["create_image", "clone_node", "delete_nodes", "set_text"] {
+        for expected in [
+            "create_image",
+            "clone_node",
+            "delete_nodes",
+            "set_text",
+            "create_page",
+        ] {
             assert!(
                 names.contains(&expected.to_string()),
                 "{expected} missing from {names:?}"
             );
         }
-        assert_eq!(names.len(), 15, "eleven reads plus four writes: {names:?}");
+        assert_eq!(names.len(), 16, "eleven reads plus five writes: {names:?}");
     }
 
     #[test]
@@ -857,6 +891,27 @@ mod tests {
         assert!(!path.file_name().unwrap().to_string_lossy().contains(':'));
         assert_eq!(std::fs::read(&path).unwrap(), b"<svg/>");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn clone_and_page_params_omit_what_was_not_given() {
+        let clone = CloneNodeArgs {
+            node_id: "1:1".into(),
+            parent_id: Some("2:2".into()),
+            x: None,
+            y: None,
+            name: None,
+            depth: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&clone).unwrap(),
+            r#"{"node_id":"1:1","parent_id":"2:2"}"#
+        );
+        let page = CreatePageArgs {
+            name: "Options".into(),
+            index: None,
+        };
+        assert_eq!(serde_json::to_string(&page).unwrap(), r#"{"name":"Options"}"#);
     }
 
     #[test]

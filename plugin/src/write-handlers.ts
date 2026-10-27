@@ -5,7 +5,8 @@
 // anything, names what it created so the user can find it in the layer list,
 // and returns enough for the caller to address the node afterwards.
 
-import { serializeNode } from "./serialize";
+import { loadOwningPage, owningPage } from "./pages.ts";
+import { serializeNode } from "./serialize.ts";
 
 /** Thrown when params are present but unusable. */
 class Invalid extends TypeError {}
@@ -103,13 +104,29 @@ async function cloneNode(params: Record<string, unknown>): Promise<unknown> {
     throw new Invalid(`${node.type} nodes cannot be cloned`);
   }
 
+  // The source may sit on a page that is not loaded, and so may the target.
+  await loadOwningPage(node);
+
+  // An explicit parent is how a copy lands on another page. Without one the
+  // copy stays beside its original, in the original's own parent, rather than
+  // jumping to the page root when the original was nested.
+  const parentId = typeof params.parent_id === "string" && params.parent_id ? params.parent_id : undefined;
+  let parent: BaseNode | null = node.parent;
+  if (parentId) {
+    parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) throw new Missing(`no node with id ${parentId} in this file`);
+    if (!("appendChild" in parent)) {
+      throw new Invalid(`${parent.type} nodes cannot hold children; parent_id must be a page or a frame`);
+    }
+    await loadOwningPage(parent);
+  }
+
   const clone = (node as SceneNode & { clone(): SceneNode }).clone();
 
   if (typeof params.name === "string" && params.name) clone.name = params.name;
 
-  // Parent to the original's own parent, so the copy keeps its context rather
-  // than landing at the page root when the original was nested.
-  const parent = node.parent;
+  // appendChild keeps the clone's position relative to its new parent, so a
+  // frame copied onto an empty page keeps the coordinates it had on its own.
   if (parent && "appendChild" in parent) {
     (parent as ChildrenMixin & BaseNode).appendChild(clone);
   }
@@ -119,10 +136,46 @@ async function cloneNode(params: Record<string, unknown>): Promise<unknown> {
   if (x !== undefined) clone.x = x;
   if (y !== undefined) clone.y = y;
 
-  figma.currentPage.selection = [clone];
+  // Selection belongs to a page; selecting a node that lives on another one
+  // throws, and changing the user's current page is not this call's business.
+  const page = owningPage(clone);
+  if (page && page.id === figma.currentPage.id) figma.currentPage.selection = [clone];
 
   const depth = typeof params.depth === "number" ? params.depth : 2;
-  return serializeNode(clone, { depth });
+  return { ...(await serializeNode(clone, { depth })), pageId: page?.id };
+}
+
+/**
+ * Add a page to the file.
+ *
+ * It does not switch to the new page: the user may be looking at something
+ * else, and the page id is all a caller needs to put nodes on it. A name that
+ * is already taken is refused rather than duplicated, because a retried call
+ * would otherwise leave two identically named pages.
+ */
+async function createPage(params: Record<string, unknown>): Promise<unknown> {
+  const name = requireString(params, "name");
+  const pages = figma.root.children;
+  const count = pages.length;
+
+  const existing = pages.find((page) => page.name === name);
+  if (existing) throw new Invalid(`a page named "${name}" already exists (${existing.id})`);
+
+  let index = count;
+  if (params.index !== undefined && params.index !== null) {
+    const requested = params.index;
+    if (typeof requested !== "number" || !Number.isInteger(requested) || requested < 0 || requested > count) {
+      throw new Invalid(`index must be an integer from 0 to ${count}`);
+    }
+    index = requested;
+  }
+
+  const page = figma.createPage();
+  page.name = name;
+  // createPage appends; only move it when it was asked to go elsewhere.
+  if (index < count) figma.root.insertChild(index, page);
+
+  return { id: page.id, name: page.name, index: figma.root.children.indexOf(page) };
 }
 
 /** Like optionalNumber, but 0 is a legal coordinate. */
@@ -230,6 +283,7 @@ export const writeHandlers: Record<
 > = {
   "figma/createImage": createImage,
   "figma/cloneNode": cloneNode,
+  "figma/createPage": createPage,
   "figma/deleteNodes": deleteNodes,
   "figma/setText": setText,
 };

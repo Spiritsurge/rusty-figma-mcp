@@ -30,6 +30,7 @@ const LABELS: Record<string, string> = {
   "figma/getVariableDefs": "Reading design tokens",
   "figma/createImage": "Placing an image",
   "figma/cloneNode": "Duplicating a layer",
+  "figma/createPage": "Adding a page",
   "figma/deleteNodes": "Deleting layers",
   "figma/setText": "Changing text",
 };
