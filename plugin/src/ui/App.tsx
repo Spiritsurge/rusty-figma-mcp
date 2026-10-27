@@ -4,6 +4,14 @@ import { type Activity, formatDuration } from "./activity";
 import { useLink } from "./useLink";
 import { type Session, useSessions } from "./useSessions";
 
+// Stamped at build time from Cargo.toml (vite.config.ui.ts).
+declare const __PLUGIN_VERSION__: string;
+
+/** A server that reports no version is unknown, not mismatched. */
+function versionMismatch(session: Session): boolean {
+  return session.server_version !== undefined && session.server_version !== __PLUGIN_VERSION__;
+}
+
 interface Status {
   fileName: string;
   pageName: string;
@@ -74,7 +82,7 @@ export default function App() {
       )}
 
       <footer>
-        <span className="product">Rusty Figma MCP</span>
+        <span className="product">Rusty Figma MCP v{__PLUGIN_VERSION__}</span>
         <span className="author">made by Mohammad Hasan Akram</span>
       </footer>
     </div>
@@ -120,6 +128,11 @@ function Picker({
             <li key={session.port}>
               <button className="session" onClick={() => onPick(session)}>
                 <span className="label">{session.label}</span>
+                {versionMismatch(session) && (
+                  <span className="mismatch" title={mismatchHint(session)}>
+                    v{session.server_version}
+                  </span>
+                )}
                 {session.connected ? (
                   <span className="in-use" title="Another Figma window is using this session">
                     in use
@@ -134,6 +147,10 @@ function Picker({
       )}
     </>
   );
+}
+
+function mismatchHint(session: Session): string {
+  return `Server is v${session.server_version}, this plugin is v${__PLUGIN_VERSION__}. Run "npx @spiritsurge/figma-mcp@${session.server_version} install-plugin" to update the plugin.`;
 }
 
 function Connected({
@@ -170,6 +187,8 @@ function Connected({
         <div className="label">{session.label}</div>
         <div className="port">localhost:{session.port}</div>
       </div>
+
+      {versionMismatch(session) && <p className="warning">{mismatchHint(session)}</p>}
 
       <div className="activity">
         {active.map((item) => (

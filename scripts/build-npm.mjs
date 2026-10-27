@@ -100,6 +100,15 @@ mkdirSync(join(launcherDir, "bin"), { recursive: true });
 cpSync("npm/figma-mcp/bin/cli.js", join(launcherDir, "bin", "cli.js"));
 cpSync("npm/figma-mcp/README.md", join(launcherDir, "README.md"));
 
+// The Figma plugin rides along so `figma-mcp install-plugin` can place it. It
+// is required: a launcher without it would publish a command that cannot work.
+const pluginSource = join(artifacts, "figma-plugin-files");
+if (!existsSync(join(pluginSource, "manifest.json"))) {
+  console.error(`no plugin files at ${pluginSource} — refusing to publish a launcher without them`);
+  process.exit(1);
+}
+cpSync(pluginSource, join(launcherDir, "plugin"), { recursive: true });
+
 const launcher = JSON.parse(readFileSync("npm/figma-mcp/package.json", "utf8"));
 launcher.version = version;
 launcher.optionalDependencies = Object.fromEntries(built.map((name) => [name, version]));

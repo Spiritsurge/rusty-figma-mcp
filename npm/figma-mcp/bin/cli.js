@@ -8,7 +8,11 @@
 // behind a proxy or under --ignore-scripts.
 
 import { spawn } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
@@ -27,6 +31,44 @@ function fail(message) {
   process.stderr.write(`figma-mcp: ${message}\n`);
   process.exit(1);
 }
+
+// `install-plugin` copies the Figma plugin that shipped with this release to a
+// fixed folder, so a new release overwrites the files there instead of landing
+// in a new folder the user has to import again. Figma re-reads the plugin's
+// files from the imported folder each time it runs.
+//
+//   figma-mcp install-plugin [--dir <path>]
+//
+// Files are overwritten one by one and nothing is ever deleted: a Figma session
+// that is running the plugin keeps working, and any other plugin folder the
+// user has imported is left alone.
+function installPlugin(args) {
+  const flag = args.indexOf("--dir");
+  const target = resolve(flag === -1 ? join(homedir(), ".figma-mcp", "plugin") : (args[flag + 1] ?? ""));
+  if (flag !== -1 && !args[flag + 1]) fail("--dir needs a path");
+
+  const source = join(dirname(fileURLToPath(import.meta.url)), "..", "plugin");
+  const files = ["manifest.json", "dist/code.js", "dist/index.html"];
+  const missing = files.filter((file) => !existsSync(join(source, file)));
+  if (missing.length > 0) {
+    fail(`this package carries no plugin files (${missing.join(", ")}). Install a published release: npx @spiritsurge/figma-mcp install-plugin`);
+  }
+
+  // Data files first, the manifest last, so a reader that sees the new
+  // manifest never finds the old code behind it.
+  mkdirSync(join(target, "dist"), { recursive: true });
+  for (const file of [...files.slice(1), files[0]]) copyFileSync(join(source, file), join(target, file));
+
+  process.stdout.write(
+    `Plugin written to ${target}\n\n` +
+      `First time only: in Figma, Plugins > Development > Import plugin from manifest,\n` +
+      `then choose ${join(target, "manifest.json")}\n` +
+      `After that, re-run this command on each release; no re-import is needed.\n`,
+  );
+  process.exit(0);
+}
+
+if (process.argv[2] === "install-plugin") installPlugin(process.argv.slice(3));
 
 const key = `${process.platform} ${process.arch}`;
 const pkg = PACKAGES[key];

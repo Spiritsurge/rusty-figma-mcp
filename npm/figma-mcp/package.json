@@ -10,6 +10,7 @@
   },
   "files": [
     "bin/cli.js",
+    "plugin/",
     "README.md"
   ],
   "keywords": [

@@ -12,6 +12,8 @@ export interface Session {
   pid: number;
   label: string;
   started_at_ms: number;
+  /** Release of the server binary. Absent on servers older than 0.1.3. */
+  server_version?: string;
   /** True when another editor already has this session's link. */
   connected: boolean;
 }

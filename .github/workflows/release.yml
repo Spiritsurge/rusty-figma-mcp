@@ -103,6 +103,13 @@ jobs:
           path: figma-plugin.zip
           if-no-files-found: error
 
+      # The same files unzipped, for the npm launcher's `install-plugin`.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: figma-plugin-files
+          path: staged/plugin
+          if-no-files-found: error
+
   release:
     name: publish
     needs: [build, plugin]

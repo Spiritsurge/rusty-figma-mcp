@@ -192,12 +192,23 @@ header {
   color: var(--figma-color-text-danger, #f24822);
 }
 
-.in-use {
+.in-use,
+.mismatch {
   flex-shrink: 0;
   margin-left: 8px;
   padding: 1px 6px;
   border-radius: 8px;
   font-size: 10px;
+  background: var(--figma-color-bg-warning-tertiary, #fff4d1);
+  color: var(--figma-color-text-warning, #a07500);
+}
+
+/* A plugin/server version mismatch is advice, not an error: the link still works. */
+.warning {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
   background: var(--figma-color-bg-warning-tertiary, #fff4d1);
   color: var(--figma-color-text-warning, #a07500);
 }

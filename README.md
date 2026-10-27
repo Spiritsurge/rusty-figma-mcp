@@ -75,10 +75,27 @@ Override it with `--label "something else"` if you run several.
 
 ### 2. Install the Figma plugin
 
-The plugin is the other half of the bridge. Download `figma-plugin.zip` from
-[Releases](https://github.com/Spiritsurge/rusty-figma-mcp/releases), unzip it,
-then in Figma desktop go to **Plugins → Development → Import plugin from
-manifest…** and choose `plugin/manifest.json`.
+The plugin is the other half of the bridge. It ships inside the npm package, so
+one command places it in a fixed folder:
+
+```sh
+npx -y @spiritsurge/figma-mcp install-plugin
+```
+
+It prints the folder it wrote (`~/.figma-mcp/plugin` by default; `--dir <path>`
+picks another). Then, once, in Figma desktop go to **Plugins → Development →
+Import plugin from manifest…** and choose the `manifest.json` in that folder.
+
+On each new release, run the command again. It overwrites the files in place,
+deletes nothing, and Figma picks them up the next time the plugin runs — no
+re-import. If the plugin and the server are different versions, the plugin
+panel says so. (Changes to some `manifest.json` fields, such as network
+access, may still need one re-import.)
+
+Prefer a download? `figma-plugin.zip` on
+[Releases](https://github.com/Spiritsurge/rusty-figma-mcp/releases) holds the
+same files; unzip it and import `plugin/manifest.json`. That folder is new each
+time, so you will re-import on every release.
 
 ### 3. Connect
 

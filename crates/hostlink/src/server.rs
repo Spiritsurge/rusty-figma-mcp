@@ -55,6 +55,11 @@ pub struct Identity {
     /// buffers through serde_json::Value, which cannot represent u128, so a
     /// wider type here silently breaks both /hello and descriptor reading.
     pub started_at_ms: u64,
+    /// Release of the server binary, so a client can warn when it is paired
+    /// with a different one. Optional: servers that predate it omit it, and a
+    /// client must read its absence as "unknown", not as a mismatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
 }
 
 impl Identity {
@@ -68,7 +73,14 @@ impl Identity {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
+            server_version: None,
         }
+    }
+
+    /// Advertise the release of the binary behind this server.
+    pub fn with_server_version(mut self, version: impl Into<String>) -> Self {
+        self.server_version = Some(version.into());
+        self
     }
 }
 

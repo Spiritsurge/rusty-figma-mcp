@@ -55,7 +55,8 @@ async fn main() -> anyhow::Result<()> {
     let token = (!args.bind.is_loopback()).then(hostlink::generate_token);
 
     let server = Server::start(Config {
-        identity: Identity::new("figma", &label),
+        identity: Identity::new("figma", &label)
+            .with_server_version(env!("CARGO_PKG_VERSION")),
         bind: args.bind,
         token: token.clone(),
         session_dir: None,
