@@ -25,6 +25,10 @@ function makePage(name) {
     loadAsync: async () => {
       loaded.push(page.id);
     },
+    remove() {
+      root.children.splice(root.children.indexOf(page), 1);
+      nodes.delete(page.id);
+    },
   };
   nodes.set(page.id, page);
   return page;
@@ -142,4 +146,36 @@ test("clone_node refuses a parent that cannot hold children, and a missing one",
   await assert.rejects(writeHandlers["figma/cloneNode"]({ node_id: original.id, parent_id: "T:1" }), /cannot hold children/);
   await assert.rejects(writeHandlers["figma/cloneNode"]({ node_id: original.id, parent_id: "9:9" }), /no node with id 9:9/);
   assert.equal(currentPage.children.length, 1, "nothing was cloned on a rejected call");
+});
+
+test("delete_page removes a page and reports its name and child count", async () => {
+  const doomed = makePage("Scratch");
+  root.children.push(doomed);
+  makeFrame(doomed, "A", 0, 0);
+  makeFrame(doomed, "B", 0, 0);
+
+  const out = await writeHandlers["figma/deletePage"]({ page_id: doomed.id });
+
+  assert.deepEqual(out, { id: doomed.id, name: "Scratch", childCount: 2, remainingPages: 1 });
+  assert.equal(root.children.includes(doomed), false);
+});
+
+test("delete_page refuses the current page, the last page, a non-page and an unknown id, touching nothing", async () => {
+  const other = makePage("Other");
+  root.children.push(other);
+  const frame = makeFrame(other, "F", 0, 0);
+
+  await assert.rejects(writeHandlers["figma/deletePage"]({ page_id: currentPage.id }), /page the user has open/);
+  await assert.rejects(writeHandlers["figma/deletePage"]({ page_id: frame.id }), /not a page/);
+  await assert.rejects(writeHandlers["figma/deletePage"]({ page_id: "9:9" }), /no node with id 9:9/);
+  assert.equal(root.children.length, 2);
+  assert.equal(other.children.length, 1);
+});
+
+test("delete_page refuses the only page in the file even when it is not the current one", async () => {
+  const only = makePage("Only");
+  root.children.length = 0;
+  root.children.push(only); // the open page is no longer in the file's list
+  await assert.rejects(writeHandlers["figma/deletePage"]({ page_id: only.id }), /at least one page/);
+  assert.equal(root.children.length, 1);
 });

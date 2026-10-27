@@ -134,6 +134,7 @@ the plugin panel names each operation as it happens.
 |---|---|
 | `clone_node` | Duplicate a node with children, styles and effects intact. With `parent_id`, put the copy on another page or frame. |
 | `create_page` | Add a page to the file (does not switch to it). |
+| `delete_page` | **Destructive.** Delete one page and its layers. Refuses the open page and the last page. |
 | `delete_nodes` | Remove nodes by id. Missing ids are reported, not fatal. |
 | `set_text` | Replace a text node's contents, keeping its formatting. |
 | `create_image` | Place a PNG, JPEG or GIF from disk as a new layer. |

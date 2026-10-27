@@ -146,6 +146,38 @@ async function cloneNode(params: Record<string, unknown>): Promise<unknown> {
 }
 
 /**
+ * Delete one page, with everything on it.
+ *
+ * This is the most destructive call the plugin has, so it is narrow on
+ * purpose: one id, never a pattern; it must be a page; it refuses the page the
+ * user is looking at and the last page in the file; and every check runs
+ * before anything is removed. It reports what went so the caller can say so.
+ */
+async function deletePage(params: Record<string, unknown>): Promise<unknown> {
+  const pageId = requireString(params, "page_id");
+  const node = await figma.getNodeByIdAsync(pageId);
+  if (!node) throw new Missing(`no node with id ${pageId} in this file`);
+  if (node.type !== "PAGE") {
+    throw new Invalid(`${node.id} is a ${node.type}, not a page; delete_page only removes pages`);
+  }
+  const page = node as PageNode;
+
+  if (page.id === figma.currentPage.id) {
+    throw new Invalid(`"${page.name}" is the page the user has open; ask them to switch pages first`);
+  }
+  if (figma.root.children.length <= 1) {
+    throw new Invalid("a file must keep at least one page; this is the only one");
+  }
+
+  // A page that is not loaded cannot report its children.
+  await page.loadAsync();
+  const removed = { id: page.id, name: page.name, childCount: page.children.length };
+
+  page.remove();
+  return { ...removed, remainingPages: figma.root.children.length };
+}
+
+/**
  * Add a page to the file.
  *
  * It does not switch to the new page: the user may be looking at something
@@ -284,6 +316,7 @@ export const writeHandlers: Record<
   "figma/createImage": createImage,
   "figma/cloneNode": cloneNode,
   "figma/createPage": createPage,
+  "figma/deletePage": deletePage,
   "figma/deleteNodes": deleteNodes,
   "figma/setText": setText,
 };

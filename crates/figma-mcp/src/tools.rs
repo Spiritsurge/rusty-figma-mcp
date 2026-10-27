@@ -346,6 +346,12 @@ pub struct CreatePageArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DeletePageArgs {
+    /// The page to delete, as returned by get_pages or create_page.
+    pub page_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SetTextArgs {
     /// The TEXT node to change.
     pub node_id: String,
@@ -564,6 +570,22 @@ impl FigmaServer {
     }
 
     #[tool(
+        description = "DESTRUCTIVE: permanently delete one page and every layer \
+                       on it from the open file. One page id only, no \
+                       patterns. Refused for the page the user has open, for \
+                       the last page in the file, and for anything that is not \
+                       a page. Returns the deleted page's name and how many \
+                       layers it held. Confirm with the user before calling. \
+                       Figma's undo may recover it, but do not rely on that."
+    )]
+    async fn delete_page(
+        &self,
+        Parameters(args): Parameters<DeletePageArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/deletePage", &args, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(
         description = "Replace the contents of a text node, keeping its font, \
                        size, colour and effects. Returns the previous text and \
                        the node's new size. This modifies the document."
@@ -775,13 +797,14 @@ mod tests {
             "delete_nodes",
             "set_text",
             "create_page",
+            "delete_page",
         ] {
             assert!(
                 names.contains(&expected.to_string()),
                 "{expected} missing from {names:?}"
             );
         }
-        assert_eq!(names.len(), 16, "eleven reads plus five writes: {names:?}");
+        assert_eq!(names.len(), 17, "eleven reads plus six writes: {names:?}");
     }
 
     #[test]
