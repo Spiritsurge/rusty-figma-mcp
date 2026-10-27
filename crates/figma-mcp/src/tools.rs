@@ -911,7 +911,10 @@ mod tests {
             name: "Options".into(),
             index: None,
         };
-        assert_eq!(serde_json::to_string(&page).unwrap(), r#"{"name":"Options"}"#);
+        assert_eq!(
+            serde_json::to_string(&page).unwrap(),
+            r#"{"name":"Options"}"#
+        );
     }
 
     #[test]
