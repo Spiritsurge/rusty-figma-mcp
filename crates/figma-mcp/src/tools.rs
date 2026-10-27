@@ -65,6 +65,17 @@ impl FigmaServer {
         Ok(path)
     }
 
+    /// Write exported bytes next to the renders and return the path.
+    fn save_export(&self, stem: &str, extension: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+        std::fs::create_dir_all(&self.render_dir)?;
+        // Node ids contain a colon, which is not a legal Windows filename.
+        let path = self
+            .render_dir
+            .join(format!("{}.{extension}", stem.replace(':', "-")));
+        std::fs::write(&path, bytes)?;
+        Ok(path)
+    }
+
     /// Call a host method and return its result verbatim.
     async fn call<P: Serialize>(
         &self,
@@ -136,6 +147,48 @@ struct Render {
     base64: String,
 }
 
+/// An SVG export. Small enough to read, but a real icon set is not, so it is
+/// saved to disk as well as returned.
+#[derive(Debug, Deserialize)]
+struct SvgExport {
+    #[serde(rename = "nodeId")]
+    node_id: String,
+    name: String,
+    svg: String,
+}
+
+/// The original bytes behind an image fill.
+#[derive(Debug, Deserialize)]
+struct ImageBytes {
+    hash: String,
+    width: f64,
+    height: f64,
+    base64: String,
+}
+
+/// SVGs up to this size are also returned inline; larger ones only by path.
+const INLINE_SVG_LIMIT: usize = 20_000;
+
+/// File extension for image bytes, by magic number.
+///
+/// Figma keeps the original upload, so this can be any web image format, and a
+/// wrong extension would make the file unopenable by the tools that need it.
+fn image_extension(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "png"
+    } else if bytes.starts_with(&[0xFF, 0xD8]) {
+        "jpg"
+    } else if bytes.starts_with(b"GIF8") {
+        "gif"
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && bytes[8..12] == *b"WEBP" {
+        "webp"
+    } else if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" && bytes[8..12] == *b"avif" {
+        "avif"
+    } else {
+        "bin"
+    }
+}
+
 /// Whether these bytes are a format Figma accepts as an image fill.
 ///
 /// Checked by magic number rather than by file extension: a mislabelled file
@@ -192,6 +245,43 @@ pub struct NodeArgs {
 
 #[derive(Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct Empty {}
+
+#[derive(Debug, Default, Deserialize, Serialize, JsonSchema)]
+pub struct FindNodesArgs {
+    /// Search under this node (a page id works). Omit to search the current
+    /// page; set `all_pages` to search the whole file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_id: Option<String>,
+    /// Search every page. Slow on a large file. Ignored when `root_id` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_pages: Option<bool>,
+    /// Keep only these node types, e.g. ["INSTANCE", "TEXT", "RECTANGLE"].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub types: Option<Vec<String>>,
+    /// Layer name contains this text, ignoring case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// A solid fill colour as #rrggbb. Alpha is ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
+    /// A solid stroke colour as #rrggbb. Alpha is ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_color: Option<String>,
+    /// A fill, stroke, text or effect style id, as returned by get_styles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_id: Option<String>,
+    /// A variable id bound to any field, fill, stroke or effect, as returned
+    /// by get_variable_defs or by `variableId` on a fill in get_node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variable_id: Option<String>,
+    /// Instances of this component, or of any variant in this component set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_id: Option<String>,
+    /// Most matches to return; the total is always counted in full. Default
+    /// 200. Use 0 to count uses without listing them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreateImageArgs {
@@ -256,6 +346,22 @@ pub struct DeleteNodesArgs {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ExportSvgArgs {
+    /// Node to export, e.g. an icon or logo frame.
+    pub node_id: String,
+    /// Convert text to outlines so the SVG renders without the font. Defaults
+    /// to true; set false to keep text as live `<text>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_text: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ImageBytesArgs {
+    /// An image hash, as `imageHash` on an IMAGE fill in get_node.
+    pub hash: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ScreenshotArgs {
     /// Node to render. Omit to render the current page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -306,6 +412,24 @@ impl FigmaServer {
     ) -> Result<CallToolResult, ErrorData> {
         self.call("figma/getSelection", &args, DEFAULT_TIMEOUT)
             .await
+    }
+
+    #[tool(
+        description = "Find nodes by type, name, solid fill or stroke colour, \
+                       style id, variable id or component, and count how many \
+                       there are. Returns ids and layer paths, not subtrees; \
+                       read an id with get_node. At least one filter is \
+                       required. This is also the usage lookup: filter by \
+                       style_id, variable_id or component_id to see where one \
+                       is used, with limit 0 for just the count. Searches \
+                       inside instances too, so overrides are found. Text \
+                       with mixed styles matches only on its node-level style."
+    )]
+    async fn find_nodes(
+        &self,
+        Parameters(args): Parameters<FindNodesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call("figma/findNodes", &args, DOCUMENT_TIMEOUT).await
     }
 
     #[tool(
@@ -434,6 +558,94 @@ impl FigmaServer {
     }
 
     #[tool(
+        description = "Export a node as SVG, so icons and logos stay vector. \
+                       The file is saved to disk and its path returned; small \
+                       SVGs are also returned inline."
+    )]
+    async fn export_svg(
+        &self,
+        Parameters(args): Parameters<ExportSvgArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let export: SvgExport = match self
+            .call_parsed("figma/exportSvg", &args, DEFAULT_TIMEOUT)
+            .await?
+        {
+            Ok(export) => export,
+            Err(failure) => return Ok(failure),
+        };
+
+        let stem = format!("{}-svg", export.node_id);
+        let saved = self
+            .save_export(&stem, "svg", export.svg.as_bytes())
+            .inspect_err(|e| debug!(error = %e, "svg not saved"))
+            .ok();
+
+        let location = match &saved {
+            Some(path) => format!(" — saved to {}", path.display()),
+            None => String::new(),
+        };
+        let mut blocks = vec![ContentBlock::text(format!(
+            "{} ({}) as SVG, {} bytes{location}",
+            export.name,
+            export.node_id,
+            export.svg.len()
+        ))];
+        if export.svg.len() <= INLINE_SVG_LIMIT || saved.is_none() {
+            blocks.push(ContentBlock::text(export.svg));
+        }
+        Ok(CallToolResult::success(blocks))
+    }
+
+    #[tool(
+        description = "Read the original bytes of an image fill by its hash \
+                       (imageHash in get_node). The file is saved to disk and \
+                       its path returned, in the format it was uploaded in."
+    )]
+    async fn get_image_bytes(
+        &self,
+        Parameters(args): Parameters<ImageBytesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let image: ImageBytes = match self
+            .call_parsed("figma/getImageBytes", &args, DOCUMENT_TIMEOUT)
+            .await?
+        {
+            Ok(image) => image,
+            Err(failure) => return Ok(failure),
+        };
+
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(&image.base64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "The plugin returned image {} but its bytes could not be decoded: {e}",
+                    image.hash
+                ))]));
+            }
+        };
+
+        let extension = image_extension(&bytes);
+        let stem = format!("image-{}", image.hash);
+        let text = match self.save_export(&stem, extension, &bytes) {
+            Ok(path) => format!(
+                "Image {} is {}x{} {extension}, {} bytes — saved to {}",
+                image.hash,
+                image.width,
+                image.height,
+                bytes.len(),
+                path.display()
+            ),
+            Err(e) => format!(
+                "Image {} is {}x{} {extension}, {} bytes, but it could not be saved: {e}",
+                image.hash,
+                image.width,
+                image.height,
+                bytes.len()
+            ),
+        };
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    #[tool(
         description = "Render a node or the current page to a base64 PNG. Use \
                        when the visual result matters more than the structure."
     )]
@@ -524,6 +736,9 @@ mod tests {
             "get_pages",
             "get_metadata",
             "get_screenshot",
+            "find_nodes",
+            "export_svg",
+            "get_image_bytes",
         ] {
             assert!(
                 names.contains(&expected.to_string()),
@@ -536,7 +751,7 @@ mod tests {
                 "{expected} missing from {names:?}"
             );
         }
-        assert_eq!(names.len(), 12, "eight reads plus four writes: {names:?}");
+        assert_eq!(names.len(), 15, "eleven reads plus four writes: {names:?}");
     }
 
     #[test]
@@ -613,6 +828,38 @@ mod tests {
         };
 
         assert!(server.save_render(&render).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn find_nodes_sends_only_the_filters_given() {
+        let json = serde_json::to_string(&FindNodesArgs {
+            fill_color: Some("#f53f3f".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(json, r##"{"fill_color":"#f53f3f"}"##);
+    }
+
+    #[test]
+    fn image_bytes_get_the_extension_their_format_needs() {
+        assert_eq!(image_extension(&[0x89, b'P', b'N', b'G', 0, 0]), "png");
+        assert_eq!(image_extension(&[0xFF, 0xD8, 0xFF, 0xE0]), "jpg");
+        assert_eq!(image_extension(b"GIF89a"), "gif");
+        assert_eq!(image_extension(b"RIFF\0\0\0\0WEBPVP8 "), "webp");
+        assert_eq!(image_extension(b"\0\0\0\x1cftypavif\0\0"), "avif");
+        assert_eq!(image_extension(b"unknown"), "bin");
+    }
+
+    #[test]
+    fn an_export_is_saved_under_a_filename_windows_accepts() {
+        let dir = std::env::temp_dir().join(format!("figma-mcp-export-{}", std::process::id()));
+        let server = FigmaServer::new(Link::new(), dir.clone());
+
+        let path = server.save_export("12:34-svg", "svg", b"<svg/>").unwrap();
+
+        assert!(!path.file_name().unwrap().to_string_lossy().contains(':'));
+        assert_eq!(std::fs::read(&path).unwrap(), b"<svg/>");
         std::fs::remove_dir_all(&dir).ok();
     }
 

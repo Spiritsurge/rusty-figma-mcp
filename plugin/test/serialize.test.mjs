@@ -40,3 +40,50 @@ test("an instance whose component is unreachable reports a null componentId", as
   assert.equal(out.componentId, null);
   assert.equal("componentName" in out, false);
 });
+
+test("a solid fill reports the variable it is bound to, so equal hex values can be told apart", async () => {
+  const paint = (id) => ({
+    type: "SOLID",
+    visible: true,
+    opacity: 1,
+    blendMode: "NORMAL",
+    color: { r: 0.235, g: 0.255, b: 0.306 },
+    ...(id ? { boundVariables: { color: { type: "VARIABLE_ALIAS", id } } } : {}),
+  });
+  const node = (id, fills) => ({ id, name: id, type: "RECTANGLE", fills, boundVariables: { topLeftRadius: { type: "VARIABLE_ALIAS", id: "VariableID:9:1" } } });
+
+  const bound = await serializeNode(node("a", [paint("VariableID:1:2")]));
+  const bare = await serializeNode(node("b", [paint(null)]));
+
+  assert.equal(bound.fills[0].color, bare.fills[0].color);
+  assert.equal(bound.fills[0].variableId, "VariableID:1:2");
+  assert.equal("variableId" in bare.fills[0], false);
+  assert.deepEqual(bound.boundVariables, { topLeftRadius: "VariableID:9:1" });
+});
+
+test("effect bindings and per-range text bindings come back as ids", async () => {
+  const shadow = {
+    type: "DROP_SHADOW",
+    visible: true,
+    radius: 4,
+    color: { r: 0, g: 0, b: 0, a: 0.25 },
+    offset: { x: 0, y: 2 },
+    blendMode: "NORMAL",
+    boundVariables: { color: { type: "VARIABLE_ALIAS", id: "VariableID:3:3" } },
+  };
+  const out = await serializeNode({
+    id: "t",
+    name: "t",
+    type: "TEXT",
+    characters: "x",
+    fontSize: 12,
+    fontName: { family: "Inter", style: "Regular" },
+    textAlignHorizontal: "LEFT",
+    letterSpacing: { value: 0, unit: "PIXELS" },
+    lineHeight: { unit: "AUTO" },
+    effects: [shadow],
+    boundVariables: { fontSize: [{ type: "VARIABLE_ALIAS", id: "VariableID:4:4" }], fills: [{ type: "VARIABLE_ALIAS", id: "VariableID:5:5" }] },
+  });
+  assert.deepEqual(out.effects[0].boundVariables, { color: "VariableID:3:3" });
+  assert.deepEqual(out.boundVariables, { fontSize: ["VariableID:4:4"] });
+});

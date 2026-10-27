@@ -3,6 +3,7 @@
 // A handler throws to signal failure; main.ts turns that into a JSON-RPC error.
 // Nothing here touches the socket — this file only knows about Figma.
 
+import { type Criteria, findNodes, normalizeColor } from "./find";
 import { serializeNode, serializeStyles, serializeVariables } from "./serialize";
 import { writeHandlers } from "./write-handlers";
 
@@ -90,12 +91,106 @@ async function getDocument(params: Record<string, unknown>, emit: Emit): Promise
   return { name: figma.root.name, pages: serialized };
 }
 
+function optionalString(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key];
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new TypeError(`${key} must be a string`);
+  return value;
+}
+
+/**
+ * Search for nodes by type, name, colour, style, variable or component.
+ *
+ * Scopes to `root_id` when given, otherwise the current page, or every page
+ * with `all_pages`. Pages other than the open one are loaded first, which is
+ * the slow part, so that path reports progress.
+ */
+async function findNodesHandler(params: Record<string, unknown>, emit: Emit): Promise<unknown> {
+  const color = (key: string) => {
+    const value = optionalString(params, key);
+    return value === undefined ? undefined : normalizeColor(value);
+  };
+  const types = params.types;
+  if (types !== undefined && !(Array.isArray(types) && types.every((t) => typeof t === "string"))) {
+    throw new TypeError("types must be an array of strings");
+  }
+  const criteria: Criteria = {
+    types: types as string[] | undefined,
+    name: optionalString(params, "name"),
+    fillColor: color("fill_color"),
+    strokeColor: color("stroke_color"),
+    styleId: optionalString(params, "style_id"),
+    variableId: optionalString(params, "variable_id"),
+    componentId: optionalString(params, "component_id"),
+  };
+  if (Object.values(criteria).every((v) => v === undefined)) {
+    throw new TypeError("give at least one filter: types, name, fill_color, stroke_color, style_id, variable_id or component_id");
+  }
+  const limit = params.limit === undefined ? undefined : Number(params.limit);
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
+    throw new TypeError("limit must be a non-negative integer");
+  }
+
+  const rootId = optionalString(params, "root_id");
+  let roots: BaseNode[];
+  if (rootId) {
+    const node = await figma.getNodeByIdAsync(rootId);
+    if (!node) throw new NotFound(`no node with id ${rootId} in this file`);
+    await loadOwningPage(node);
+    roots = [node];
+  } else if (params.all_pages === true) {
+    roots = [...figma.root.children];
+  } else {
+    roots = [figma.currentPage];
+  }
+
+  const total = { total: 0, matches: [] as unknown[], truncated: false, scanned: 0 };
+  for (let i = 0; i < roots.length; i++) {
+    if (roots[i].type === "PAGE") await (roots[i] as PageNode).loadAsync();
+    if (roots.length > 1) emit(Math.round((i / roots.length) * 100), `scanning ${roots[i].name}`);
+    const remaining = limit === undefined ? undefined : Math.max(0, limit - total.matches.length);
+    const found = await findNodes(roots[i], criteria, { limit: remaining });
+    total.total += found.total;
+    total.scanned += found.scanned;
+    total.matches.push(...found.matches);
+    total.truncated ||= found.truncated;
+  }
+  return total;
+}
+
 async function getStyles(): Promise<unknown> {
   return serializeStyles();
 }
 
 async function getVariableDefs(): Promise<unknown> {
   return serializeVariables();
+}
+
+async function exportSvg(params: Record<string, unknown>): Promise<unknown> {
+  const nodeId = requireString(params, "node_id");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new NotFound(`no node with id ${nodeId} in this file`);
+  if (!("exportAsync" in node)) {
+    throw new TypeError(`${node.type} nodes cannot be exported as SVG`);
+  }
+  await loadOwningPage(node);
+
+  // Text stays text only when asked: outlined glyphs render the same anywhere,
+  // live text needs the font, so outlines are the safe default for an icon.
+  const svg = await (node as ExportMixin).exportAsync({
+    format: "SVG_STRING",
+    svgOutlineText: params.outline_text !== false,
+  });
+  return { nodeId: node.id, name: node.name, svg };
+}
+
+async function getImageBytes(params: Record<string, unknown>): Promise<unknown> {
+  const hash = requireString(params, "hash");
+  const image = figma.getImageByHash(hash);
+  if (!image) throw new NotFound(`no image with hash ${hash} in this file`);
+
+  const [bytes, size] = await Promise.all([image.getBytesAsync(), image.getSizeAsync()]);
+  return { hash, width: size.width, height: size.height, base64: figma.base64Encode(bytes) };
 }
 
 async function getScreenshot(params: Record<string, unknown>): Promise<unknown> {
@@ -131,7 +226,10 @@ export const handlers: Record<string, Handler> = {
   "figma/getSelection": getSelection,
   "figma/getNode": getNode,
   "figma/getDocument": getDocument,
+  "figma/findNodes": findNodesHandler,
   "figma/getStyles": getStyles,
   "figma/getVariableDefs": getVariableDefs,
   "figma/getScreenshot": getScreenshot,
+  "figma/exportSvg": exportSvg,
+  "figma/getImageBytes": getImageBytes,
 };

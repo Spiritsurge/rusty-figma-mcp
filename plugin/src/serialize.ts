@@ -66,6 +66,39 @@ function compact<T extends Record<string, unknown>>(object: T): T {
   return object;
 }
 
+/**
+ * A variable binding as plain ids. Bindings come back as `{ type, id }` aliases,
+ * one per field or, for text, one per range; consumers want the id, which they
+ * resolve against get_variable_defs.
+ */
+function bindingIds(value: unknown): string | string[] | undefined {
+  if (Array.isArray(value)) {
+    const ids = value.map((alias) => (alias as VariableAlias | undefined)?.id).filter((id): id is string => !!id);
+    return ids.length > 0 ? ids : undefined;
+  }
+  return (value as VariableAlias | undefined)?.id;
+}
+
+/**
+ * Which variable each bound field uses, by field name.
+ *
+ * Fills, strokes and effects are left out on purpose: they bind per paint or
+ * per effect, so the id sits on that entry where it cannot be misattributed by
+ * index. Without it a fill reads as a bare hex, and two variables that share a
+ * value (a brand colour and a canvas fill) are indistinguishable.
+ */
+function serializeBindings(bound: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!bound) return undefined;
+  const skip = new Set(["fills", "strokes", "effects", "layoutGrids", "textRangeFills", "componentProperties"]);
+  const out: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(bound)) {
+    if (skip.has(field)) continue;
+    const ids = bindingIds(value);
+    if (ids !== undefined) out[field] = ids;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function serializePaint(paint: Paint): Record<string, unknown> {
   const base: Record<string, unknown> = {
     type: paint.type,
@@ -76,6 +109,7 @@ function serializePaint(paint: Paint): Record<string, unknown> {
 
   if (paint.type === "SOLID") {
     base.color = toHex(paint.color);
+    base.variableId = paint.boundVariables?.color?.id;
   } else if (paint.type === "IMAGE") {
     base.scaleMode = paint.scaleMode;
     base.imageHash = paint.imageHash;
@@ -115,6 +149,7 @@ export function serializeEffects(effects: readonly Effect[]): Record<string, unk
       base.offset = { x: round(effect.offset.x), y: round(effect.offset.y) };
       base.spread = effect.spread || undefined;
       base.blendMode = effect.blendMode;
+      base.boundVariables = serializeBindings(effect.boundVariables);
     }
     return compact(base);
   });
@@ -206,6 +241,11 @@ export async function serializeNode(
     const main = await (node as InstanceNode).getMainComponentAsync();
     out.componentId = main?.id ?? null;
     if (main) out.componentName = main.name;
+  }
+
+  // Variable bindings on the node's own fields (radius, spacing, size, ...).
+  if (has(node, "boundVariables")) {
+    out.boundVariables = serializeBindings(node.boundVariables as Record<string, unknown> | undefined);
   }
 
   // Style bindings, which are what tie a node back to the design system.

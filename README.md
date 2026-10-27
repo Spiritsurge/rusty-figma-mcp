@@ -3,7 +3,7 @@
 Read the Figma file you have open from Cursor, Claude Code, or any MCP client.
 One 3 MB binary, no API token, no REST quotas.
 
-> **Status:** eight read tools and four write tools, working end to end
+> **Status:** eleven read tools and four write tools, working end to end
 > against real documents.
 
 ## Why this exists
@@ -120,7 +120,10 @@ cd plugin && npm install && npm run build
 | `get_pages` | Pages in the file. |
 | `get_styles` | Local paint, text, effect and grid styles. |
 | `get_variable_defs` | Variable collections and per-mode values — design tokens. |
+| `find_nodes` | Where a colour, style, variable or component is used: ids, layer paths and counts. |
 | `get_screenshot` | A node or page rendered as an image the model can see. |
+| `export_svg` | A node as SVG, saved to disk, so icons and logos stay vector. |
+| `get_image_bytes` | The original bytes of an image fill, by hash, saved to disk. |
 
 ### Writing
 
